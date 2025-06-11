@@ -1,14 +1,32 @@
 import React, { useState } from 'react'
 import Sidebar from './components/Sidebar'
 import HomePage from './components/HomePage'
+import TaskProgress from './components/TaskProgress'
+import TitleBar from './components/TitleBar'
 
 const App = () => {
   const [activeMenu, setActiveMenu] = useState('home')
+  const [currentView, setCurrentView] = useState('home') // 'home' or 'taskProgress'
+  const [selectedList, setSelectedList] = useState(null)
+
+  const handleCardClick = (list) => {
+    setSelectedList(list)
+    setCurrentView('taskProgress')
+  }
+
+  const handleBackToHome = () => {
+    setCurrentView('home')
+    setSelectedList(null)
+  }
 
   const renderContent = () => {
+    if (currentView === 'taskProgress') {
+      return <TaskProgress onBack={handleBackToHome} selectedList={selectedList} />
+    }
+
     switch (activeMenu) {
       case 'home':
-        return <HomePage />
+        return <HomePage onCardClick={handleCardClick} />
       case 'tasks':
         return (
           <div className="p-8">
@@ -51,11 +69,16 @@ const App = () => {
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} />
-      <main className="flex-1 overflow-y-auto">
-        {renderContent()}
-      </main>
+    <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
+      <TitleBar />
+      <div className="flex flex-1 overflow-hidden">
+        {currentView !== 'taskProgress' && (
+          <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} />
+        )}
+        <main className="flex-1 overflow-y-auto">
+          {renderContent()}
+        </main>
+      </div>
     </div>
   )
 }

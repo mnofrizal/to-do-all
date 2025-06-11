@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 
@@ -11,6 +11,8 @@ function createWindow() {
     width: 900,
     height: 670,
     show: false,
+    frame: false,
+    titleBarStyle: 'hidden',
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -36,6 +38,28 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+// IPC handlers for window controls
+ipcMain.on('window-minimize', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) window.minimize()
+})
+
+ipcMain.on('window-maximize', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) {
+    if (window.isMaximized()) {
+      window.unmaximize()
+    } else {
+      window.maximize()
+    }
+  }
+})
+
+ipcMain.on('window-close', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) window.close()
+})
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
