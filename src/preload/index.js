@@ -6,7 +6,13 @@ const api = {
   windowControls: {
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
-    close: () => ipcRenderer.send('window-close')
+    close: () => ipcRenderer.send('window-close'),
+    resizeToFloating: () => ipcRenderer.send('window-resize-floating'),
+    resizeToFocus: () => ipcRenderer.send('window-resize-focus'),
+    resizeToNormal: () => ipcRenderer.send('window-resize-normal'),
+    setResizable: (resizable) => ipcRenderer.send('window-set-resizable', resizable),
+    hideWindowControls: () => ipcRenderer.send('window-hide-controls'),
+    showWindowControls: () => ipcRenderer.send('window-show-controls')
   }
 }
 
@@ -18,7 +24,9 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('electron', {
       ...electronAPI,
       ipcRenderer: {
-        send: (channel, ...args) => ipcRenderer.send(channel, ...args)
+        send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+        on: (channel, callback) => ipcRenderer.on(channel, callback),
+        removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
       }
     })
     contextBridge.exposeInMainWorld('api', api)
@@ -29,7 +37,9 @@ if (process.contextIsolated) {
   window.electron = {
     ...electronAPI,
     ipcRenderer: {
-      send: (channel, ...args) => ipcRenderer.send(channel, ...args)
+      send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+      on: (channel, callback) => ipcRenderer.on(channel, callback),
+      removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
     }
   }
   window.api = api

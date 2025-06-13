@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { motion } from 'framer-motion'
 import { Plus, MoreHorizontal, Clock, ExpandIcon, Edit, Copy, Archive } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -98,9 +99,23 @@ const HomePage = ({ onCardClick }) => {
     return name.charAt(0).toUpperCase()
   }
 
+  // Instant appearance - no fade animations
+  const cardVariants = {
+    hidden: { y: 10 },
+    visible: {
+      y: 0,
+      transition: {
+        type: "spring",
+        stiffness: 150,
+        damping: 25,
+        duration: 0.2
+      }
+    }
+  }
+
   return (
-    <div className="min-h-full bg-background p-6 px-10">
-      <div className="mx-auto max-w-[1700px]">
+    <div className="mx-auto flex min-h-full max-w-[1700px] bg-background p-6 px-10">
+      <div className="flex-col">
         {/* Header */}
         <div className="mb-8 mt-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-foreground">Your Lists</h1>
@@ -109,12 +124,19 @@ const HomePage = ({ onCardClick }) => {
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 4xl:grid-cols-5">
         {/* Existing Lists */}
-        {lists.map((list) => (
-          <Card
+        {lists.map((list, index) => (
+          <motion.div
             key={list.id}
-            className="group relative flex h-80 w-full cursor-pointer flex-col rounded-xl border bg-[#FCFBFB] transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-primary hover:ring-opacity-50 dark:border-zinc-700 dark:bg-[#171717]"
-            onClick={() => onCardClick && onCardClick(list)}
+            variants={cardVariants}
+            whileHover={{
+              y: -4,
+              transition: { duration: 0.2, ease: "easeOut" }
+            }}
           >
+            <Card
+              className="group relative flex h-80 cursor-pointer flex-col rounded-xl border bg-[#FCFBFB] transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-primary hover:ring-opacity-50 dark:border-zinc-700 dark:bg-[#171717]"
+              onClick={() => onCardClick && onCardClick(list)}
+            >
          <div className='px-6 pt-3'>
          <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -209,55 +231,56 @@ const HomePage = ({ onCardClick }) => {
                 </div>
               </div>
             </CardContent>
-          </Card>
+            </Card>
+          </motion.div>
         ))}
 
-        {/* Create New List Card */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Card className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]">
-              <CardContent className="flex h-full flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground">
-                  <Plus className="h-6 w-6 text-muted-foreground" />
+            {/* Create New List Card */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Card className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]">
+                  <CardContent className="flex h-full flex-col items-center justify-center text-center">
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground">
+                      <Plus className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <h3 className="mb-2 font-semibold text-muted-foreground">CREATE LIST</h3>
+                  </CardContent>
+                </Card>
+              </DialogTrigger>
+              <DialogContent className="border-border bg-card sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle className="text-card-foreground">Create New List</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Create a new task list to organize your todos.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="">
+                    
+                    <Input
+                      id="name"
+                      value={newListName}
+                      onChange={(e) => setNewListName(e.target.value)}
+                      className="col-span-3"
+                      placeholder="Enter list name..."
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleCreateList()
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
-                <h3 className="mb-2 font-semibold text-muted-foreground">CREATE LIST</h3>
-              </CardContent>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="border-border bg-card sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle className="text-card-foreground">Create New List</DialogTitle>
-              <DialogDescription className="text-muted-foreground">
-                Create a new task list to organize your todos.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="">
-                
-                <Input
-                  id="name"
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  className="col-span-3"
-                  placeholder="Enter list name..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleCreateList()
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={handleCreateList}>
-                Create List
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={handleCreateList}>
+                    Create List
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { motion } from 'framer-motion'
 import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List } from 'lucide-react'
 import { Button } from './ui/button'
 import { Switch } from './ui/switch.jsx'
@@ -133,27 +134,38 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
   const renderMiddleContent = () => {
     if (currentView === 'taskProgress') {
       return (
-        <div className="flex items-center space-x-1 rounded-lg border border-border bg-card p-1">
-          {taskViewOptions.map((option) => {
+        <motion.div
+          className="flex items-center space-x-1 rounded-lg border border-border bg-card p-1"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
+          {taskViewOptions.map((option, index) => {
             const Icon = option.icon
             return (
-              <Button
+              <motion.div
                 key={option.id}
-                variant={activeTaskView === option.id ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveTaskView(option.id)}
-                className={`flex items-center space-x-2 px-3 py-2 text-sm ${
-                  activeTaskView === option.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                }`}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
               >
-                <Icon className="h-4 w-4" />
-                <span>{option.label}</span>
-              </Button>
+                <Button
+                  variant={activeTaskView === option.id ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTaskView(option.id)}
+                  className={`flex items-center space-x-2 px-3 py-2 text-sm transition-all duration-200 ${
+                    activeTaskView === option.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{option.label}</span>
+                </Button>
+              </motion.div>
             )
           })}
-        </div>
+        </motion.div>
       )
     }
     return null

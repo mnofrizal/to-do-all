@@ -1,11 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, ArrowLeft, Zap } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
 import { Input } from './ui/input'
+import { Progress } from './ui/progress'
+import { useTheme } from '../contexts/ThemeContext'
 
-const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
+const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) => {
+  const scrollRefs = useRef({})
+  const { theme, colorTheme } = useTheme()
   const [columns, setColumns] = useState([
     {
       id: 'backlog',
@@ -95,13 +100,23 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
       priorityColor: 'bg-gray-500'
     }
 
-    setColumns(columns.map(col => 
-      col.id === columnId 
+    setColumns(columns.map(col =>
+      col.id === columnId
         ? { ...col, tasks: [...col.tasks, newTask] }
         : col
     ))
 
     setNewTaskInputs({ ...newTaskInputs, [columnId]: '' })
+
+    // Auto scroll to bottom with smooth animation after adding task
+    setTimeout(() => {
+      if (scrollRefs.current[columnId]) {
+        scrollRefs.current[columnId].scrollTo({
+          top: scrollRefs.current[columnId].scrollHeight,
+          behavior: 'smooth'
+        })
+      }
+    }, 100)
   }
 
   const handleInputChange = (columnId, value) => {
@@ -114,20 +129,51 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
     }
   }
 
+  const handleLeapItClick = () => {
+    // Call the parent handler for single-window approach
+    if (onLeapIt) {
+      onLeapIt()
+    }
+  }
+
+  // Instant view switching - no slide animations
+  const viewVariants = {
+    initial: { opacity: 1, x: 0 },
+    in: { opacity: 1, x: 0 },
+    out: { opacity: 1, x: 0 }
+  }
+
+  const viewTransition = {
+    duration: 0
+  }
+
+  // No task animations - instant appearance
+  const taskVariants = {
+    hidden: { opacity: 1, y: 0 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0
+      }
+    }
+  }
+
   const renderViewContent = () => {
     switch (activeView) {
       case 'kanban':
         return (
-          <div
-            className="kanban-scrollbar flex-1 overflow-x-auto"
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#cbd5e1 #f1f5f9'
-            }}
-          >
-            <div className="mx-auto flex h-full min-w-fit max-w-7xl gap-4 p-6">
-            {columns.map((column) => (
-          <div key={column.id} className="flex w-full min-w-[350px] max-w-[370px] flex-col">
+          <div className="flex h-[calc(100vh-105px)] flex-col">
+            <div
+              className="kanban-scrollbar flex-1 overflow-x-auto overflow-y-hidden"
+              style={{
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#cbd5e1 #f1f5f9'
+              }}
+            >
+              <div className="mx-auto flex h-full min-w-fit max-w-7xl gap-4 p-6">
+              {columns.map((column) => (
+          <div key={column.id} className="flex h-[calc(100vh-150px)] w-full min-w-[350px] max-w-[370px] flex-col">
             <Card className={`flex h-full flex-col border ${column.color} bg-card`}>
               {/* Column Header */}
               <div className="flex items-center justify-between p-4 pb-3">
@@ -147,12 +193,10 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
               {/* Progress Bar */}
               {column.progress && (
                 <div className="mx-4 mb-6">
-                  <div className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700">
-                    <div 
-                      className="h-2 rounded-full bg-primary"
-                      style={{ width: `${(column.progress.completed / column.progress.total) * 100}%` }}
-                    />
-                  </div>
+                  <Progress
+                    value={(column.progress.completed / column.progress.total) * 100}
+                    className="h-2 w-full"
+                  />
                 </div>
               )}
 
@@ -167,38 +211,44 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
                 </div>
               )}
 
-              {/* Tasks */}
-              <CardContent className="flex-1 space-y-3 p-4 pt-0">
-                {column.tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className={`rounded-lg border border-zinc-300 dark:border-zinc-800 dark:bg-[#262626] p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors ${
-                      task.completed ? 'opacity-75' : ''
-                    }`}
-                    onClick={() => onTaskClick && onTaskClick(task)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        <div className={`${task.priorityColor} mt-0.5 h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}>
-                          {task.priority}
+              {/* Tasks and Add Task Container */}
+              <div className="flex min-h-0 flex-1 flex-col">
+                {/* Scrollable Tasks */}
+                <CardContent
+                  ref={(el) => scrollRefs.current[column.id] = el}
+                  className="min-h-0 space-y-3 overflow-y-auto p-4 pt-0"
+                >
+                  {column.tasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={`rounded-lg border border-zinc-300 dark:border-zinc-800 dark:bg-[#262626] p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors ${
+                        task.completed ? 'opacity-75' : ''
+                      }`}
+                      onClick={() => onTaskClick && onTaskClick(task)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                          <div className={`${task.priorityColor} mt-0.5 h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}>
+                            {task.priority}
+                          </div>
+                          <span className={`font-light text-sm ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                            {task.title}
+                          </span>
                         </div>
-                        <span className={`font-light text-sm ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                          {task.title}
-                        </span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{task.time}</span>
-                    </div>
-                    {task.estimate && !task.completed && (
-                      <div className="mt-2 flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">+ {task.estimate}</span>
                         <span className="text-xs text-muted-foreground">{task.time}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {task.estimate && !task.completed && (
+                        <div className="mt-2 flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">+ {task.estimate}</span>
+                          <span className="text-xs text-muted-foreground">{task.time}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
 
-                {/* Add Task Input */}
-                <div className="space-y-2">
+                {/* Add Task Input - Always visible, right after tasks */}
+                <div className="flex-shrink-0 px-4 pb-2">
                   <Input
                     placeholder="+ ADD TASK"
                     value={newTaskInputs[column.id] || ''}
@@ -207,10 +257,10 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
                     className="h-12 border-dashed border-zinc-700 bg-transparent text-sm text-foreground placeholder:font-semibold placeholder:text-muted-foreground"
                   />
                 </div>
-              </CardContent>
+              </div>
 
-              {/* Column Footer */}
-              <div className="p-4 pt-0">
+              {/* Column Footer - Fixed at bottom */}
+              <div className="mt-auto p-4 pt-2">
                 {column.id === 'backlog' && (
                   <Button variant="ghost" className="w-full text-sm text-muted-foreground hover:text-foreground">
                     <div className="flex items-center gap-2">
@@ -220,7 +270,10 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
                   </Button>
                 )}
                 {column.id === 'today' && (
-                  <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Button
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={handleLeapItClick}
+                  >
                     <Zap className="mr-2 h-4 w-4" />
                     Leap It!
                   </Button>
@@ -229,9 +282,10 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
             </Card>
           </div>
         ))}
+               </div>
+             </div>
            </div>
-         </div>
-       )
+         )
      
      case 'files':
        return (
@@ -252,7 +306,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
              </div>
            </div>
          </div>
-       )
+        )
      
      case 'timeline':
        return (
@@ -347,7 +401,14 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick }) => {
 
  return (
    <div className="flex h-full flex-col">
-     {renderViewContent()}
+     <AnimatePresence>
+       <div
+         key={activeView}
+         className="h-full"
+       >
+         {renderViewContent()}
+       </div>
+     </AnimatePresence>
    </div>
  )
 }

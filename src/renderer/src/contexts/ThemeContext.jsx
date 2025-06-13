@@ -50,6 +50,11 @@ export const ThemeProvider = ({ children }) => {
     // Save to localStorage
     localStorage.setItem('theme', theme)
     localStorage.setItem('colorTheme', colorTheme)
+
+    // Sync theme to floating window if available
+    if (window.api && window.api.floatingWindow && window.api.floatingWindow.syncTheme) {
+      window.api.floatingWindow.syncTheme({ theme, colorTheme })
+    }
   }, [theme, colorTheme])
 
   const toggleTheme = () => {

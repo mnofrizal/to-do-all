@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Home, CheckSquare, Calendar, Settings, Plus } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -37,8 +38,39 @@ const Sidebar = ({ activeMenu, setActiveMenu }) => {
     }
   ]
 
+  // Animation variants
+  const sidebarVariants = {
+    initial: { x: -280, opacity: 0 },
+    animate: {
+      x: 0,
+      opacity: 1,
+      transition: {
+        type: "spring",
+        stiffness: 100,
+        damping: 20,
+        duration: 0.4
+      }
+    },
+    exit: {
+      x: -280,
+      opacity: 0,
+      transition: {
+        type: "spring",
+        stiffness: 120,
+        damping: 25,
+        duration: 0.3
+      }
+    }
+  }
+
   return (
-    <div className="bg-sidebar flex h-full w-72 flex-col overflow-hidden">
+    <motion.div
+      className="bg-sidebar flex h-full w-72 flex-col overflow-hidden"
+      variants={sidebarVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
       {/* Header */}
       <div className="flex border-b border-border p-4 px-6">
         <h1 className="text-3xl font-bold text-primary">TaskLeap</h1>
@@ -117,7 +149,7 @@ const Sidebar = ({ activeMenu, setActiveMenu }) => {
           </Button>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
