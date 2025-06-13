@@ -3,11 +3,14 @@ import Sidebar from './components/Sidebar'
 import HomePage from './components/HomePage'
 import TaskProgress from './components/TaskProgress'
 import TitleBar from './components/TitleBar'
+import TopNavbar from './components/TopNavbar'
+import { ThemeProvider } from './contexts/ThemeContext'
 
 const App = () => {
   const [activeMenu, setActiveMenu] = useState('home')
   const [currentView, setCurrentView] = useState('home') // 'home' or 'taskProgress'
   const [selectedList, setSelectedList] = useState(null)
+  const [activeTaskView, setActiveTaskView] = useState('kanban')
 
   const handleCardClick = (list) => {
     setSelectedList(list)
@@ -19,9 +22,13 @@ const App = () => {
     setSelectedList(null)
   }
 
+  const handleTaskClick = (task) => {
+    setActiveTaskView('timeline')
+  }
+
   const renderContent = () => {
     if (currentView === 'taskProgress') {
-      return <TaskProgress onBack={handleBackToHome} selectedList={selectedList} />
+      return <TaskProgress onBack={handleBackToHome} selectedList={selectedList} activeView={activeTaskView} onTaskClick={handleTaskClick} />
     }
 
     switch (activeMenu) {
@@ -69,17 +76,29 @@ const App = () => {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
-      <TitleBar />
-      <div className="flex flex-1 overflow-hidden">
-        {currentView !== 'taskProgress' && (
-          <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} />
-        )}
-        <main className="flex-1 overflow-y-auto">
-          {renderContent()}
-        </main>
+    <ThemeProvider>
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <TitleBar />
+        <div className="flex flex-1 overflow-hidden">
+          {currentView !== 'taskProgress' && (
+            <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} />
+          )}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <TopNavbar
+              currentView={currentView}
+              activeMenu={activeMenu}
+              onBack={handleBackToHome}
+              selectedList={selectedList}
+              activeTaskView={activeTaskView}
+              setActiveTaskView={setActiveTaskView}
+            />
+            <main className="flex-1 overflow-y-auto">
+              {renderContent()}
+            </main>
+          </div>
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   )
 }
 

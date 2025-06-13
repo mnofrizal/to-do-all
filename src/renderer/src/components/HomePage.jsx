@@ -99,20 +99,20 @@ const HomePage = ({ onCardClick }) => {
   }
 
   return (
-    <div className="p-6 pt-0">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="mb-2 text-3xl font-bold text-foreground">Your Lists</h1>
-        <p className="text-muted-foreground">Lists with your upcoming tasks</p>
-      </div>
+    <div className="min-h-full bg-background p-6 px-10">
+      <div className="mx-auto max-w-[1700px]">
+        {/* Header */}
+        <div className="mb-8 mt-2 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-foreground">Your Lists</h1>
+          <p className="text-muted-foreground">Lists with your upcoming tasks</p>
+        </div>
 
-      {/* Lists Grid */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 4xl:grid-cols-5">
         {/* Existing Lists */}
         {lists.map((list) => (
           <Card
             key={list.id}
-            className="group relative flex aspect-square w-full cursor-pointer flex-col rounded-xl transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-blue-400 hover:ring-opacity-50"
+            className="group relative flex h-80 w-full cursor-pointer flex-col rounded-xl border bg-[#FCFBFB] transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-primary hover:ring-opacity-50 dark:border-zinc-700 dark:bg-[#171717]"
             onClick={() => onCardClick && onCardClick(list)}
           >
          <div className='px-6 pt-3'>
@@ -121,25 +121,25 @@ const HomePage = ({ onCardClick }) => {
                   <div className={`${list.iconColor} text-white rounded-md w-6 h-6 flex items-center justify-center text-sm font-bold`}>
                     {list.icon}
                   </div>
-                  <CardTitle className="text-md">{list.name}</CardTitle>
+                  <CardTitle className="text-md text-card-foreground">{list.name}</CardTitle>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-20 min-w-[7rem] rounded-lg drop-shadow-2xl">
-                    <DropdownMenuItem onClick={() => handleEditList(list.id)} className="py-1 text-xs">
+                  <DropdownMenuContent align="end" className="w-20 min-w-[7rem] rounded-lg border border-border bg-background drop-shadow-2xl">
+                    <DropdownMenuItem onClick={() => handleEditList(list.id)} className="py-1 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground">
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDuplicateList(list.id)} className="py-1 text-xs">
+                    <DropdownMenuItem onClick={() => handleDuplicateList(list.id)} className="py-1 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground">
                       Duplicate
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator className="bg-border" />
                     <DropdownMenuItem
                       onClick={() => handleArchiveList(list.id)}
-                      className="py-1 text-xs text-red-600 focus:text-red-600"
+                      className="py-1 text-xs text-destructive hover:bg-accent focus:text-destructive"
                     >
                       Archive
                     </DropdownMenuItem>
@@ -156,13 +156,13 @@ const HomePage = ({ onCardClick }) => {
                       const task = list.tasks[index]
                       return (
                         <div key={index} className={`flex items-center justify-between p-3 rounded-lg h-10 ${
-                          task ? (task.isActive ? 'bg-green-100 border border-green-200' : 'bg-white border border-gray-200') : 'bg-transparent'
+                          task ? (task.isActive ? 'bg-primary/10 border border-primary/20' : 'dark:bg-[#222222] bg-white border border-border') : 'bg-transparent'
                         }`}>
                           {task ? (
                             <>
                               <div className="flex items-center space-x-3">
-                                <span className="text-sm text-zinc-300">{index + 1}</span>
-                                <span className="flex-1 text-sm text-zinc-600">{task.title}</span>
+                                <span className="text-sm text-muted-foreground">{index + 1}</span>
+                                <span className="flex-1 text-sm text-foreground">{task.title}</span>
                               </div>
                               <div className="flex items-center">
                                
@@ -180,13 +180,13 @@ const HomePage = ({ onCardClick }) => {
                 
                 {/* Gradient Fade Effect */}
                 {list.tasks.length > 4 && (
-                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white to-transparent"></div>
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent"></div>
                 )}
                 {/* Hover Open Button Overlay */}
                 {list.tasks.some(task => task.isActive) && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <Button
-                      className="rounded-full bg-emerald-400 px-6 text-black shadow-xl hover:bg-emerald-200"
+                      className="rounded-full bg-primary px-6 text-primary-foreground shadow-xl hover:bg-primary/90"
                       onClick={(e) => {
                         e.stopPropagation()
                         onCardClick && onCardClick(list)
@@ -202,7 +202,7 @@ const HomePage = ({ onCardClick }) => {
               {/* Footer Stats */}
               <div className="p-6 pt-3">
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-bold text-muted-foreground">
+                  <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400">
                     {list.pendingTasks} pending tasks
                   </span>
                   
@@ -215,27 +215,25 @@ const HomePage = ({ onCardClick }) => {
         {/* Create New List Card */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Card className="aspect-square w-full cursor-pointer rounded-xl border-2 border-dashed transition-colors hover:border-primary/50">
+            <Card className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]">
               <CardContent className="flex h-full flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/50">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground">
                   <Plus className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <h3 className="mb-2 font-semibold text-muted-foreground">CREATE LIST</h3>
               </CardContent>
             </Card>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="border-border bg-card sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Create New List</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-card-foreground">Create New List</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
                 Create a new task list to organize your todos.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="name" className="text-right text-sm font-medium">
-                  Name
-                </label>
+              <div className="">
+                
                 <Input
                   id="name"
                   value={newListName}
@@ -260,6 +258,7 @@ const HomePage = ({ onCardClick }) => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
     </div>
   )
