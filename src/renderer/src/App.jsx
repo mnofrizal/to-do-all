@@ -39,6 +39,11 @@ const App = () => {
     if (window.api && window.api.windowControls && window.api.windowControls.resizeToFloating) {
       window.api.windowControls.resizeToFloating()
     }
+    
+    // Set always on top for floating mode
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('window-set-always-on-top', true)
+    }
   }
 
   const handleFocusMode = () => {
@@ -57,6 +62,10 @@ const App = () => {
       if (window.api.windowControls.hideWindowControls) {
         window.api.windowControls.hideWindowControls()
       }
+    }
+    // Set always on top
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('window-set-always-on-top', true)
     }
   }
 
@@ -77,6 +86,10 @@ const App = () => {
         window.api.windowControls.resizeToFloating()
       }
     }
+    // Remove always on top
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('window-set-always-on-top', false)
+    }
   }
 
   const handleBackToNormal = () => {
@@ -95,6 +108,10 @@ const App = () => {
       if (window.api.windowControls.resizeToNormal) {
         window.api.windowControls.resizeToNormal()
       }
+    }
+    // Remove always on top
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('window-set-always-on-top', false)
     }
   }
 

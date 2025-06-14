@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { X, Settings, Home, Maximize2, ChevronDown } from 'lucide-react'
+import { X, Settings, Home, Maximize2, ChevronDown, Minimize2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Input } from './ui/input'
@@ -185,6 +185,7 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 text-muted-foreground"
+            onClick={onClose}
           >
             <Home className="h-4 w-4" />
           </Button>
@@ -192,17 +193,11 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 text-muted-foreground"
+            onClick={onFocusMode}
           >
-            <Maximize2 className="h-4 w-4" />
+            <Minimize2 className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+         
         </div>
       </div>
 
@@ -216,10 +211,10 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
             <div className="flex items-center justify-between">
               <Progress
                 value={progressPercentage}
-                className="mr-3 h-2 flex-1"
+                className="mr-3 h-2 flex-1 bg-zinc-300"
               />
-              <span className="text-sm text-muted-foreground">
-                {Math.floor(progressPercentage)}% • {completedTasks}/{totalTasks} Done
+              <span className="text-xs text-muted-foreground">
+                {completedTasks}/{totalTasks} Done
               </span>
             </div>
           </div>
