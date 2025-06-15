@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -259,6 +260,7 @@ function TaskFlowTimelineInner() {
   const [contextMenu, setContextMenu] = useState(null);
   const [showAttachmentList, setShowAttachmentList] = useState(false);
   const [showAttachmentSubmenu, setShowAttachmentSubmenu] = useState(false);
+  const [showDeleteGroupConfirm, setShowDeleteGroupConfirm] = useState(false);
   
   // Helper function to calculate dynamic subflow dimensions and attachment positions
   const calculateSubflowLayout = (attachmentCount) => {
@@ -322,6 +324,7 @@ function TaskFlowTimelineInner() {
   useEffect(() => {
     const handleClickOutside = () => {
       setContextMenu(null);
+      setShowDeleteGroupConfirm(false); // Reset confirmation state
       // Clear context highlighting when menu closes
       setNodes(currentNodes =>
         currentNodes.map(node => ({
@@ -395,7 +398,7 @@ function TaskFlowTimelineInner() {
           target: String(i + 2),
           sourceHandle: 'bottom', // Explicitly use bottom handle
           targetHandle: 'top', // Explicitly use top handle
-          type: 'straight', // Use straight line instead of default curved
+          type: 'default', // Use straight line instead of default curved
           style: { stroke: '#3b82f6', strokeWidth: 2 }, // Blue for task flow
           animated: false
         });
@@ -495,7 +498,7 @@ function TaskFlowTimelineInner() {
         { stroke: '#f97316', strokeWidth: 2 } : // Orange for attachments
         { stroke: '#3b82f6', strokeWidth: 2 };  // Blue for task flow
       
-      const edgeType = isAttachmentConnection ? 'default' : 'straight'; // Straight lines for task flow
+      const edgeType = isAttachmentConnection ? 'default' : 'default'; // Straight lines for task flow
       
       // Determine if connection should be animated (for active tasks)
       let shouldAnimate = false;
@@ -592,6 +595,85 @@ function TaskFlowTimelineInner() {
         };
         
         setNodes((nds) => [...nds, newNode]);
+        
+        // Check if dropped near an existing task for auto-connection
+        const connectionRange = 200;
+        let closestTaskNode = null;
+        let minDistance = connectionRange;
+        
+        nodes.forEach(node => {
+          if (node.type === 'customTask') {
+            // Calculate distance from drop position to center of task node
+            const nodeCenterX = node.position.x + 100;
+            const nodeCenterY = node.position.y + 50;
+            
+            const distance = Math.sqrt(
+              Math.pow(position.x - nodeCenterX, 2) +
+              Math.pow(position.y - nodeCenterY, 2)
+            );
+            
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestTaskNode = node;
+            }
+          }
+        });
+        
+        // Create connection if dropped near existing task
+        if (closestTaskNode) {
+          // Check if connection already exists
+          const existingConnection = edges.find(edge =>
+            (edge.source === String(nodeId) && edge.target === closestTaskNode.id) ||
+            (edge.source === closestTaskNode.id && edge.target === String(nodeId))
+          );
+          
+          if (!existingConnection) {
+            // Smart positioning: check if there's a task below the target
+            const belowPosition = {
+              x: closestTaskNode.position.x,
+              y: closestTaskNode.position.y + 150
+            };
+            
+            // Check if any task is in the "below" area (within 100px range)
+            const hasTaskBelow = nodes.some(node =>
+              node.id !== String(nodeId) &&
+              node.id !== closestTaskNode.id &&
+              node.type === 'customTask' &&
+              Math.abs(node.position.x - belowPosition.x) < 100 &&
+              Math.abs(node.position.y - belowPosition.y) < 100
+            );
+            
+            // Choose position: below if clear, bottom-right if occupied
+            const smartPosition = hasTaskBelow
+              ? {
+                  x: closestTaskNode.position.x + 280, // Bottom-right corner
+                  y: closestTaskNode.position.y + 130
+                }
+              : belowPosition; // Directly below
+            
+            // Update the new node position with smart positioning
+            newNode.position = smartPosition;
+            
+            // Determine if either task is active (not finished) for animation
+            const isActiveConnection = (!newNode.data.isFinished && !newNode.data.completedAt) ||
+                                     (!closestTaskNode.data.isFinished && !closestTaskNode.data.completedAt);
+            
+            // Create task flow connection from closest task to new task
+            const newEdge = {
+              id: `task-${closestTaskNode.id}-${nodeId}`,
+              source: closestTaskNode.id,
+              target: String(nodeId),
+              sourceHandle: 'bottom',
+              targetHandle: 'top',
+              type: 'default',
+              style: { stroke: '#3b82f6', strokeWidth: 2 }, // Blue for task flow
+              animated: isActiveConnection
+            };
+            
+            setEdges((eds) => [...eds, newEdge]);
+          }
+        }
+        
         setNodeId((id) => id + 1);
         setTasksInNodes(prev => new Set([...prev, task.id]));
       } else if (attachmentData) {
@@ -841,11 +923,12 @@ function TaskFlowTimelineInner() {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     
-    // Check if dragging an attachment by looking at data transfer types
+    // Check what type of item is being dragged
     const isDraggingAttachment = event.dataTransfer.types.includes('application/attachment');
+    const isDraggingTask = event.dataTransfer.types.includes('application/reactflow');
     
-    // Only highlight if dragging an attachment
-    if (isDraggingAttachment && reactFlowInstance.current) {
+    // Highlight nodes when dragging attachments or tasks
+    if ((isDraggingAttachment || isDraggingTask) && reactFlowInstance.current) {
       const position = reactFlowInstance.current.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
@@ -890,7 +973,7 @@ function TaskFlowTimelineInner() {
           }))
         );
       }
-    } else if (!isDraggingAttachment) {
+    } else if (!isDraggingAttachment && !isDraggingTask) {
       // Clear highlighting if not dragging attachment
       if (hoveredTaskNode) {
         setHoveredTaskNode(null);
@@ -963,11 +1046,82 @@ function TaskFlowTimelineInner() {
 
   // Handle disconnect functionality
   const handleDisconnect = useCallback((nodeId) => {
+    // Find if this node has a connected subflow
+    const connectedSubflow = nodes.find(node =>
+      node.type === 'customSubflow' && node.data.taskId === nodeId
+    );
+    
+    // Remove all edges connected to this node
     setEdges(currentEdges =>
       currentEdges.filter(edge =>
         edge.source !== nodeId && edge.target !== nodeId
       )
     );
+    
+    // If there's a connected subflow, make it standalone
+    if (connectedSubflow) {
+      setNodes(currentNodes =>
+        currentNodes.map(node => {
+          if (node.id === connectedSubflow.id) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                taskId: null, // Remove task reference
+                label: 'Standalone Attachments' // Update label
+              }
+            };
+          }
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              isContextSelected: false
+            }
+          };
+        })
+      );
+    } else {
+      // Clear context highlighting for regular disconnect
+      setNodes(currentNodes =>
+        currentNodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            isContextSelected: false
+          }
+        }))
+      );
+    }
+    
+    setContextMenu(null);
+  }, [setEdges, setNodes, nodes]);
+
+  // Handle delete group confirmation
+  const handleDeleteGroup = useCallback((nodeId) => {
+    const subflowNode = nodes.find(n => n.id === nodeId);
+    if (subflowNode && subflowNode.type === 'customSubflow') {
+      // Find all attachments in this subflow
+      const attachmentsInSubflow = nodes.filter(node =>
+        node.parentNode === nodeId && node.type === 'customAttachment'
+      );
+      
+      // Remove the subflow and all its attachments
+      setNodes((currentNodes) =>
+        currentNodes.filter(node =>
+          node.id !== nodeId && !attachmentsInSubflow.some(att => att.id === node.id)
+        )
+      );
+      
+      // Remove any edges connected to the subflow
+      setEdges((currentEdges) =>
+        currentEdges.filter(edge =>
+          edge.source !== nodeId && edge.target !== nodeId
+        )
+      );
+    }
+    
+    setShowDeleteGroupConfirm(false);
     setContextMenu(null);
     // Clear context highlighting
     setNodes(currentNodes =>
@@ -979,7 +1133,7 @@ function TaskFlowTimelineInner() {
         }
       }))
     );
-  }, [setEdges, setNodes]);
+  }, [nodes, setNodes, setEdges]);
 
   // Handle context menu actions
   const handleContextMenuAction = useCallback((action, nodeId, position) => {
@@ -1006,6 +1160,16 @@ function TaskFlowTimelineInner() {
 
     if (action === 'disconnect') {
       handleDisconnect(nodeId);
+      return;
+    }
+
+    if (action === 'deleteGroup') {
+      setShowDeleteGroupConfirm(true);
+      return;
+    }
+
+    if (action === 'confirmDeleteGroup') {
+      handleDeleteGroup(nodeId);
       return;
     }
 
@@ -1555,14 +1719,17 @@ function TaskFlowTimelineInner() {
     );
   };
 
-  // Handle node drag for intersection-based connection with subflows
+  // Handle node drag for intersection-based connection with subflows and task-to-task connections
   const onNodeDrag = useCallback((_, draggedNode) => {
     const intersections = getIntersectingNodes(draggedNode);
     
-    // Filter for valid attachment-task intersections (only standalone attachments can be moved)
+    // Filter for valid intersections including task-to-task connections
     const validIntersections = intersections.filter(intersectingNode =>
+      // Attachment-task intersections (existing logic)
       (draggedNode.type === 'customAttachment' && !draggedNode.parentNode && intersectingNode.type === 'customTask') ||
-      (draggedNode.type === 'customTask' && intersectingNode.type === 'customAttachment' && !intersectingNode.parentNode)
+      (draggedNode.type === 'customTask' && intersectingNode.type === 'customAttachment' && !intersectingNode.parentNode) ||
+      // Task-to-task intersections (new logic)
+      (draggedNode.type === 'customTask' && intersectingNode.type === 'customTask' && draggedNode.id !== intersectingNode.id)
     );
 
     // Update node highlighting for intersections
@@ -1576,24 +1743,43 @@ function TaskFlowTimelineInner() {
       }))
     );
 
-    // Handle edge preview for intersections (show connection to future subflow)
+    // Handle edge preview for intersections
     setEdges((currentEdges) => {
       // Remove any temporary edges
       const permanentEdges = currentEdges.filter((e) => e.className !== 'temp');
 
-      if (validIntersections.length > 0 && draggedNode.type === 'customAttachment') {
-        // Show preview of subflow connection for attachment
-        const tempEdges = validIntersections.map(intersectingNode => ({
-          id: `temp-subflow-${intersectingNode.id}-${draggedNode.id}`,
-          source: intersectingNode.id,
-          target: `temp-subflow-${intersectingNode.id}`, // Temporary subflow target
-          sourceHandle: 'attachment-right',
-          targetHandle: null,
-          style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-          className: 'temp',
-          type: 'default',
-          animated: false
-        }));
+      if (validIntersections.length > 0) {
+        const tempEdges = [];
+        
+        validIntersections.forEach(intersectingNode => {
+          if (draggedNode.type === 'customAttachment') {
+            // Show preview of subflow connection for attachment
+            tempEdges.push({
+              id: `temp-subflow-${intersectingNode.id}-${draggedNode.id}`,
+              source: intersectingNode.id,
+              target: `temp-subflow-${intersectingNode.id}`, // Temporary subflow target
+              sourceHandle: 'attachment-right',
+              targetHandle: null,
+              style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
+              className: 'temp',
+              type: 'default',
+              animated: false
+            });
+          } else if (draggedNode.type === 'customTask' && intersectingNode.type === 'customTask') {
+            // Show preview of task flow connection (target task uses bottom handle, dragged task uses top handle)
+            tempEdges.push({
+              id: `temp-task-${intersectingNode.id}-${draggedNode.id}`,
+              source: intersectingNode.id,
+              target: draggedNode.id,
+              sourceHandle: 'bottom',
+              targetHandle: 'top',
+              style: { stroke: '#3b82f6', strokeWidth: 2, strokeDasharray: '5,5' },
+              className: 'temp',
+              type: 'default',
+              animated: false
+            });
+          }
+        });
 
         return [...permanentEdges, ...tempEdges];
       }
@@ -1602,16 +1788,18 @@ function TaskFlowTimelineInner() {
     });
   }, [getIntersectingNodes, setNodes, setEdges]);
 
-  // Handle node drag stop for intersection-based connection with subflows
+  // Handle node drag stop for intersection-based connection with subflows and task-to-task connections
   const onNodeDragStop = useCallback((_, draggedNode) => {
     const intersections = getIntersectingNodes(draggedNode);
     
-    // Filter for valid intersections including standalone subflows
+    // Filter for valid intersections including standalone subflows and task-to-task connections
     const validIntersections = intersections.filter(intersectingNode =>
       (draggedNode.type === 'customAttachment' && !draggedNode.parentNode && intersectingNode.type === 'customTask') ||
       (draggedNode.type === 'customTask' && intersectingNode.type === 'customAttachment' && !intersectingNode.parentNode) ||
       (draggedNode.type === 'customSubflow' && !draggedNode.data.taskId && intersectingNode.type === 'customTask') ||
-      (draggedNode.type === 'customTask' && intersectingNode.type === 'customSubflow' && !intersectingNode.data.taskId)
+      (draggedNode.type === 'customTask' && intersectingNode.type === 'customSubflow' && !intersectingNode.data.taskId) ||
+      // Task-to-task intersections
+      (draggedNode.type === 'customTask' && intersectingNode.type === 'customTask' && draggedNode.id !== intersectingNode.id)
     );
 
     // Clear all highlighting
@@ -1624,6 +1812,78 @@ function TaskFlowTimelineInner() {
         }
       }))
     );
+
+    // Handle task-to-task connection FIRST (before other logic)
+    const taskToTaskIntersection = validIntersections.find(node =>
+      draggedNode.type === 'customTask' && node.type === 'customTask' && node.id !== draggedNode.id
+    );
+    
+    if (taskToTaskIntersection) {
+      // Check if connection already exists (exclude temporary edges)
+      const existingConnection = edges.find(edge =>
+        edge.className !== 'temp' && (
+          (edge.source === draggedNode.id && edge.target === taskToTaskIntersection.id) ||
+          (edge.source === taskToTaskIntersection.id && edge.target === draggedNode.id)
+        )
+      );
+      
+      if (!existingConnection) {
+        // Determine if either task is active (not finished) for animation
+        const isActiveConnection = (!draggedNode.data.isFinished && !draggedNode.data.completedAt) ||
+                                 (!taskToTaskIntersection.data.isFinished && !taskToTaskIntersection.data.completedAt);
+        
+        // Smart positioning: check if there's a task below the target
+        const belowPosition = {
+          x: taskToTaskIntersection.position.x,
+          y: taskToTaskIntersection.position.y + 150
+        };
+        
+        // Check if any task is in the "below" area (within 100px range)
+        const hasTaskBelow = nodes.some(node =>
+          node.id !== draggedNode.id &&
+          node.id !== taskToTaskIntersection.id &&
+          node.type === 'customTask' &&
+          Math.abs(node.position.x - belowPosition.x) < 100 &&
+          Math.abs(node.position.y - belowPosition.y) < 100
+        );
+        
+        // Choose position: below if clear, bottom-right if occupied
+        const newPosition = hasTaskBelow
+          ? {
+              x: taskToTaskIntersection.position.x + 280, // Bottom-right corner
+              y: taskToTaskIntersection.position.y + 130
+            }
+          : belowPosition; // Directly below
+        
+        // Auto-position the dragged task
+        setNodes((currentNodes) =>
+          currentNodes.map(node =>
+            node.id === draggedNode.id
+              ? { ...node, position: newPosition }
+              : node
+          )
+        );
+
+        // Create task flow connection (target task uses bottom handle, dragged task uses top handle)
+        setEdges((currentEdges) => [
+          ...currentEdges.filter((e) => e.className !== 'temp'),
+          {
+            id: `task-${taskToTaskIntersection.id}-${draggedNode.id}`,
+            source: taskToTaskIntersection.id,
+            target: draggedNode.id,
+            sourceHandle: 'bottom',
+            targetHandle: 'top',
+            type: 'default',
+            style: { stroke: '#3b82f6', strokeWidth: 2 }, // Blue for task flow
+            animated: isActiveConnection
+          }
+        ]);
+      } else {
+        // Remove temporary edges if connection already exists
+        setEdges((currentEdges) => currentEdges.filter((e) => e.className !== 'temp'));
+      }
+      return; // Exit early after handling task-to-task connection
+    }
 
     // Handle standalone subflow reconnection
     if (validIntersections.length > 0 && draggedNode.type === 'customSubflow' && !draggedNode.data.taskId) {
@@ -1922,7 +2182,7 @@ function TaskFlowTimelineInner() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col" style={{ minHeight: 0, minWidth: 0 }}>
+    <div className="flex w-full flex-col" style={{ height: 'calc(100vh - 122px)', minHeight: 0, minWidth: 0 }}>
       {/* Top Bar */}
       <div className="flex h-12 items-center justify-between border-b border-border bg-zinc-50 px-4 dark:bg-zinc-800">
         <div className="flex items-center gap-4">
@@ -1967,9 +2227,9 @@ function TaskFlowTimelineInner() {
         </div>
       </div>
 
-      <div className="flex h-full flex-row">
-        {/* Task List Sidebar */}
-        <div className="flex h-full w-80 min-w-[18rem] max-w-xs flex-col border-r border-border bg-white dark:bg-zinc-900">
+      <div className="relative flex flex-row" style={{ height: 'calc(100vh - 122px - 3rem)' }}>
+        {/* Task List Sidebar - Absolute positioned for better scrolling */}
+        <div className="absolute left-0 top-0 z-10 flex h-full w-80 min-w-[18rem] max-w-xs flex-col border-r border-border bg-white shadow-lg dark:bg-zinc-900">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="text-sm font-semibold text-foreground">Task Library</div>
             <div className="text-xs text-muted-foreground">Ctrl+1</div>
@@ -2119,8 +2379,11 @@ function TaskFlowTimelineInner() {
           </div>
         </div>
 
-        {/* Timeline Map */}
-        <div className="relative flex h-full min-w-0 flex-1 flex-col bg-zinc-50 dark:bg-zinc-900">
+        {/* Timeline Map - Adjusted margin to account for absolute sidebar */}
+        <div className="relative flex h-full min-w-0 flex-1 flex-col bg-zinc-50 dark:bg-zinc-900" style={{
+          marginLeft: '20rem',
+          marginRight: sidebarOpen ? '20rem' : '0'
+        }}>
           <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2 dark:bg-zinc-800">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Zap className="h-4 w-4" />
@@ -2134,7 +2397,8 @@ function TaskFlowTimelineInner() {
           </div>
           <div
             ref={reactFlowWrapper}
-            style={{ height: 800 }}
+            // style={{ height: 800 }}
+            className='h-full w-full overflow-hidden'
           >
             <ReactFlow
               nodes={nodes}
@@ -2144,6 +2408,7 @@ function TaskFlowTimelineInner() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onNodeClick={onNodeClick}
+              onPaneClick={() => setSidebarOpen(false)}
               onNodeContextMenu={onNodeContextMenu}
               onPaneContextMenu={onPaneContextMenu}
               onNodeDrag={onNodeDrag}
@@ -2177,13 +2442,16 @@ function TaskFlowTimelineInner() {
                       <Copy className="h-4 w-4" />
                       Duplicate
                     </button>
-                    <button
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-zinc-700"
-                      onClick={() => handleContextMenuAction('disconnect', contextMenu.id)}
-                    >
-                      <X className="h-4 w-4" />
-                      Disconnect
-                    </button>
+                    {/* Only show disconnect for standalone attachments (not in subflow) */}
+                    {!nodes.find(n => n.id === contextMenu.id)?.parentNode && (
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-zinc-700"
+                        onClick={() => handleContextMenuAction('disconnect', contextMenu.id)}
+                      >
+                        <X className="h-4 w-4" />
+                        Disconnect
+                      </button>
+                    )}
                     <button
                       className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                       onClick={() => handleContextMenuAction('delete', contextMenu.id)}
@@ -2248,6 +2516,28 @@ function TaskFlowTimelineInner() {
                   </>
                 )}
                 
+                {contextMenu.type === 'customSubflow' && (
+                  <>
+                    {!showDeleteGroupConfirm ? (
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        onClick={() => handleContextMenuAction('deleteGroup', contextMenu.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete Group
+                      </button>
+                    ) : (
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        onClick={() => handleContextMenuAction('confirmDeleteGroup', contextMenu.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Confirm?
+                      </button>
+                    )}
+                  </>
+                )}
+                
                 {contextMenu.type === 'pane' && (
                   <>
                     <div className="relative">
@@ -2292,109 +2582,120 @@ function TaskFlowTimelineInner() {
           </div>
         </div>
 
-        {/* Properties Sidebar */}
-        <div className={`h-full w-80 bg-white border-l border-border shadow-lg transform transition-transform duration-300 ease-in-out dark:bg-zinc-900 ${
-          sidebarOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}>
-          {selectedNode && (
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">Properties</div>
-                <div className="flex items-center gap-2">
-                  <div className="text-xs text-muted-foreground">Ctrl+2</div>
+        {/* Properties Sidebar - Fixed positioned on the right with framer-motion */}
+        <AnimatePresence>
+          {sidebarOpen && selectedNode && (
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{
+                type: 'spring',
+                stiffness: 300,
+                damping: 30,
+                duration: 0.3
+              }}
+              className="absolute right-0 top-0 z-20 h-full w-80 border-l border-border bg-white shadow-lg dark:bg-zinc-900"
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <div className="text-sm font-semibold text-foreground">Properties</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground">Ctrl+2</div>
+                    <button
+                      onClick={handleSidebarClose}
+                      className="rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4">
+                  <div className="space-y-6">
+                    {/* Task Header */}
+                    <div className="flex items-center gap-2">
+                      <div className={`${selectedNode.data.taskGroup?.color || 'bg-gray-400'} h-6 w-6 rounded text-xs font-bold text-white flex items-center justify-center`}>
+                        {selectedNode.data.taskGroup?.name || 'T'}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-foreground">{selectedNode.data.label}</div>
+                        <div className="text-xs text-muted-foreground">Task</div>
+                      </div>
+                    </div>
+
+                    {/* Properties */}
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Estimated Time</label>
+                        <div className="mt-1 rounded border bg-background p-2 text-sm">
+                          {selectedNode.data.estimate || 'Not set'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Priority</label>
+                        <div className="mt-1">
+                          <select className="w-full rounded border bg-background p-2 text-sm">
+                            <option value={selectedNode.data.priority}>{selectedNode.data.priority || 'medium'}</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Finish Status</label>
+                        <div className="mt-1">
+                          <select
+                            className="w-full rounded border bg-background p-2 text-sm"
+                            value={selectedNode.data.isFinished ? 'finished' : 'task'}
+                            onChange={(e) => {
+                              if (e.target.value === 'finished') {
+                                handleMakeFinish();
+                              }
+                            }}
+                          >
+                            <option value="task">Regular Task</option>
+                            <option value="finished">Finished</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {selectedNode.data.completedAt && (
+                        <div>
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Completed At</label>
+                          <div className="mt-1 rounded border bg-background p-2 text-sm">
+                            {new Date(selectedNode.data.completedAt).toLocaleString()}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Comment</label>
+                        <textarea
+                          className="mt-1 w-full rounded border bg-background p-2 text-sm"
+                          rows={3}
+                          placeholder="Add notes about this task..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border p-4">
                   <button
-                    onClick={handleSidebarClose}
-                    className="rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                    onClick={handleNodeDelete}
+                    className="w-full rounded bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
                   >
-                    <X className="h-4 w-4" />
+                    Remove from Timeline
                   </button>
                 </div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-6">
-                  {/* Task Header */}
-                  <div className="flex items-center gap-2">
-                    <div className={`${selectedNode.data.taskGroup?.color || 'bg-gray-400'} h-6 w-6 rounded text-xs font-bold text-white flex items-center justify-center`}>
-                      {selectedNode.data.taskGroup?.name || 'T'}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-foreground">{selectedNode.data.label}</div>
-                      <div className="text-xs text-muted-foreground">Task</div>
-                    </div>
-                  </div>
-
-                  {/* Properties */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Estimated Time</label>
-                      <div className="mt-1 rounded border bg-background p-2 text-sm">
-                        {selectedNode.data.estimate || 'Not set'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Priority</label>
-                      <div className="mt-1">
-                        <select className="w-full rounded border bg-background p-2 text-sm">
-                          <option value={selectedNode.data.priority}>{selectedNode.data.priority || 'medium'}</option>
-                          <option value="high">High</option>
-                          <option value="medium">Medium</option>
-                          <option value="low">Low</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Finish Status</label>
-                      <div className="mt-1">
-                        <select
-                          className="w-full rounded border bg-background p-2 text-sm"
-                          value={selectedNode.data.isFinished ? 'finished' : 'task'}
-                          onChange={(e) => {
-                            if (e.target.value === 'finished') {
-                              handleMakeFinish();
-                            }
-                          }}
-                        >
-                          <option value="task">Regular Task</option>
-                          <option value="finished">Finished</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {selectedNode.data.completedAt && (
-                      <div>
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Completed At</label>
-                        <div className="mt-1 rounded border bg-background p-2 text-sm">
-                          {new Date(selectedNode.data.completedAt).toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Comment</label>
-                      <textarea
-                        className="mt-1 w-full rounded border bg-background p-2 text-sm"
-                        rows={3}
-                        placeholder="Add notes about this task..."
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-border p-4">
-                <button
-                  onClick={handleNodeDelete}
-                  className="w-full rounded bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
-                >
-                  Remove from Timeline
-                </button>
-              </div>
-            </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
       
       {/* Attachment List Modal */}
@@ -2580,6 +2881,7 @@ function TaskFlowTimelineInner() {
           </div>
         </div>
       )}
+      
     </div>
   );
 }

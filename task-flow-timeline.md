@@ -73,6 +73,52 @@ The Task Flow Timeline is an interactive ReactFlow-based component that visualiz
 - ✅ **Consistent spacing**: 10px gaps between items, proper padding
 - ✅ **Grid layout**: Clean arrangement for any number of attachments
 
+### Phase 11: Context Menu System Implementation
+**Goal**: Add comprehensive right-click functionality
+- ✅ **Node Context Menus**: Right-click menus for tasks, attachments, and subflows
+- ✅ **Context-Sensitive Options**: Different menu options based on node type
+- ✅ **Visual Highlighting**: Purple highlighting during context menu interactions
+- ✅ **Proper Cleanup**: Context highlighting clears when menu closes
+
+### Phase 12: Disconnect Functionality
+**Goal**: Allow users to remove connections while preserving nodes
+- ✅ **Disconnect Action**: Remove all connections from a node via context menu
+- ✅ **Subflow Preservation**: Disconnected subflows become standalone and reconnectable
+- ✅ **Label Updates**: Standalone subflows update to "Standalone Attachments"
+- ✅ **Connection Management**: Proper edge cleanup and state management
+
+### Phase 13: Task-to-Task Connection System
+**Goal**: Enable task flow connections through intersection-based dragging
+- ✅ **Intersection Detection**: Drag existing tasks over other tasks to connect
+- ✅ **Visual Previews**: Dashed blue lines show potential connections during drag
+- ✅ **Handle Direction**: Proper connection flow (target bottom → dragged top)
+- ✅ **Connection Validation**: Prevents duplicate and invalid connections
+- ✅ **Temporary Edge Handling**: Excludes preview edges from duplicate detection
+
+### Phase 14: Intelligent Auto-Positioning
+**Goal**: Smart positioning for connected tasks
+- ✅ **Conflict Detection**: Scans for existing tasks in target positions
+- ✅ **Preferred Positioning**: Places tasks directly below when space available
+- ✅ **Adaptive Positioning**: Uses bottom-right corner when conflicts detected
+- ✅ **Unified Logic**: Same smart positioning for library drops and area dragging
+- ✅ **Visual Feedback**: Immediate confirmation of successful connections
+
+### Phase 15: Finish Status Management
+**Goal**: Implement task completion workflow
+- ✅ **Finish Toggle**: Mark tasks as finished via context menu
+- ✅ **Handle Visibility**: Finished tasks show only top handle for input connections
+- ✅ **Visual Indicators**: Green styling and "FINISH" badge for completed tasks
+- ✅ **Animation Control**: Connection animations based on task status
+- ✅ **Terminology Update**: Changed "goal" to "finish" throughout component
+
+### Phase 16: Advanced Context Menu Features
+**Goal**: Enhanced context menu functionality with safety features
+- ✅ **Conditional Options**: Disconnect only for standalone attachments
+- ✅ **Inline Confirmation**: Delete group confirmation within context menu
+- ✅ **State Management**: Proper confirmation state handling
+- ✅ **Visual Feedback**: Bold styling for confirmation states
+- ✅ **Auto-Reset**: Confirmation resets when clicking outside menu
+
 ## Current Architecture
 
 ### Core Components
@@ -112,17 +158,50 @@ The Task Flow Timeline is an interactive ReactFlow-based component that visualiz
 ### Key Features
 
 #### Connection Methods
-1. **Drop-based Connection**
-   - Drag attachment from library → Drop near task → Auto-connects
+1. **Library-to-Timeline Task Connections**
+   - Drag tasks from library → Drop near existing tasks → Auto-connects with smart positioning
    - Range: 200px detection radius
+   - Intelligent positioning: below if clear, bottom-right if occupied
 
-2. **Intersection-based Connection**
-   - Drag standalone attachment over task → Visual preview → Release to connect
+2. **Intersection-based Task Connections**
+   - Drag existing tasks over other tasks → Visual preview → Release to connect
    - Uses ReactFlow's native `getIntersectingNodes()` API
+   - Dashed blue preview lines during drag
+   - Proper handle direction: target bottom → dragged top
 
-3. **Auto-arrangement**
+3. **Attachment Connections**
+   - Drag attachments from library → Drop near tasks → Auto-connects
+   - Drag standalone attachments over tasks → Visual preview → Release to connect
+   - Smart subflow creation: 1 attachment = basic line, 2+ = subflow container
+
+4. **Auto-arrangement**
    - Click Group button → Organizes all attachments in optimal layouts
    - Maintains subflow structure and relationships
+
+#### Context Menu System
+1. **Task Context Menu**
+   - Add Attachment (with submenu for file types)
+   - Mark as Finish / Unmark as Finish
+   - Disconnect (removes all connections, preserves subflows as standalone)
+   - Return to Library (deletes task from timeline)
+
+2. **Standalone Attachment Context Menu**
+   - Duplicate (creates copy)
+   - Disconnect (removes connections)
+   - Delete (permanently removes)
+
+3. **Subflow Attachment Context Menu**
+   - Duplicate (creates copy)
+   - Delete (removes and reorganizes subflow)
+   - No disconnect option (managed by subflow)
+
+4. **Subflow Context Menu**
+   - Delete Group (with inline confirmation)
+   - Confirmation changes "Delete Group" → "Confirm?" → executes deletion
+
+5. **Empty Area Context Menu**
+   - Add Attachment (creates standalone attachment at cursor)
+   - Show Attachments (opens modal with all timeline attachments)
 
 #### Smart Subflow System
 ```
@@ -220,6 +299,53 @@ src/renderer/src/components/TaskFlowTimeline.jsx
 2. Grouped attachments are managed at subflow level
 3. Moving attachment to new task updates relationships
 4. Previous connections automatically cleaned up
+
+### Creating Task-to-Task Connections
+
+#### From Library
+1. User drags task from library
+2. Drops near existing task (within 200px)
+3. System detects if space below target is clear
+4. If clear: positions directly below target
+5. If occupied: positions at bottom-right corner
+6. Creates blue task flow connection (target bottom → new task top)
+7. Connection animates if either task is active
+
+#### From Timeline Area
+1. User drags existing task over another task
+2. Dashed blue preview line appears during drag
+3. Target task highlights with drop target styling
+4. User releases to create connection
+5. Dragged task auto-positions using smart algorithm
+6. Connection created with proper handle direction
+
+### Context Menu Operations
+
+#### Task Management
+1. Right-click on task → context menu appears
+2. Task highlights with purple selection
+3. Select "Mark as Finish" → toggles finish status
+4. Finished tasks show green styling and only top handle
+5. Select "Disconnect" → removes all connections, preserves subflows as standalone
+
+#### Attachment Management
+1. Right-click on standalone attachment → shows full menu
+2. Right-click on subflow attachment → limited menu (no disconnect)
+3. Select "Duplicate" → creates copy at offset position
+4. Select "Delete" → removes and reorganizes parent subflow if needed
+
+#### Subflow Management
+1. Right-click on subflow → shows "Delete Group"
+2. Click "Delete Group" → text changes to "Confirm?" with bold styling
+3. Click "Confirm?" → deletes entire subflow and all attachments
+4. Click outside menu → resets to "Delete Group"
+
+### Finish Status Workflow
+1. User marks task as finished via context menu
+2. Task shows green styling with "FINISH" badge
+3. Bottom handle disappears (only top handle remains)
+4. Connected edges stop animating
+5. Task can still receive connections but cannot initiate new ones
 
 ## Future Enhancement Opportunities
 

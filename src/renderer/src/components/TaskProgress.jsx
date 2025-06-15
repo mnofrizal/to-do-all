@@ -1404,7 +1404,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
      
      case 'timeline':
        return (
-         <div className="flex h-full p-6">
+         <div className="flex h-full px-0 pt-6">
            
            <div className="flex-1 border border-border bg-card" style={{ minHeight: 600 }}>
              <TaskFlowTimeline />
