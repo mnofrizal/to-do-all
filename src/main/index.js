@@ -190,8 +190,8 @@ ipcMain.on('window-resize-normal', () => {
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     
     // Default main window size and center position
-    const defaultWidth = 900
-    const defaultHeight = 670
+    const defaultWidth = 1920
+    const defaultHeight = 1080
     const centerX = Math.floor((screenWidth - defaultWidth) / 2)
     const centerY = Math.floor((screenHeight - defaultHeight) / 2)
     

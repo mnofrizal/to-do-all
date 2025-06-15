@@ -1,100 +1,32 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, ArrowLeft, Zap, CheckCircle, Menu, FileText, ChevronLeft, ChevronRight, MoreHorizontal, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo } from 'lucide-react'
+import { Plus, ArrowLeft, Zap, CheckCircle, Menu, FileText, ChevronLeft, ChevronRight, MoreHorizontal, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
 import { Input } from './ui/input'
 import { Progress } from './ui/progress'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useTheme } from '../contexts/ThemeContext'
+import {
+  formatTime,
+  getCurrentWeek,
+  getNextMonday,
+  isCurrentWeekTask,
+  updateTaskToCurrentWeek,
+  isToday,
+  isTaskExpired,
+  moveExpiredTasksToBacklog,
+  calculateThisWeekProgress,
+  calculateTodayProgress,
+  getDefaultTaskColumns,
+  createNewTask
+} from '../data/taskData'
 
 const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) => {
   const scrollRefs = useRef({})
   const { theme, colorTheme } = useTheme()
-  const [columns, setColumns] = useState([
-    {
-      id: 'backlog',
-      title: 'Backlog',
-      tasks: [],
-      color: 'dark:border-zinc-700 border-zinc-300',
-    },
-    {
-      id: 'thisweek',
-      title: 'This Week',
-      tasks: [
-        {
-          id: 1,
-          title: 'jalan jalkan',
-          time: '0min',
-          estimate: 'EST',
-          priority: 'K',
-          priorityColor: 'bg-blue-500'
-        }
-      ],
-      color: 'dark:border-zinc-700 border-zinc-300',
-      progress: { completed: 2, total: 5 }
-    },
-    {
-      id: 'today',
-      title: 'Today',
-      tasks: [
-        {
-          id: 2,
-          title: 'masak sate',
-          time: '10hr',
-          estimate: 'EST',
-          priority: 'K',
-          priorityColor: 'bg-blue-500',
-          subtasks: [
-            { id: 21, title: 'makan sarapasan', completed: true },
-            { id: 22, title: 'makan malam', completed: true }
-          ],
-          notes: 'ini adalah notes'
-        },
-        {
-          id: 3,
-          title: 'edwf',
-          time: '0min',
-          estimate: 'EST',
-          priority: 'T',
-          priorityColor: 'bg-yellow-500',
-          subtasks: [
-            { id: 31, title: 'makan sarapasan', completed: true },
-            { id: 32, title: 'makan malam', completed: true }
-          ]
-        }
-      ],
-      color: 'border-primary',
-      progress: { completed: 0, total: 2 }
-    },
-    {
-      id: 'done',
-      title: 'Done',
-      tasks: [
-        {
-          id: 4,
-          title: 'Test to do 2 makan enak makar',
-          time: '10min',
-          priority: 'K',
-          priorityColor: 'bg-blue-500',
-          completed: true
-        },
-        {
-          id: 5,
-          title: 'Kerjain to do app',
-          time: '10hr 24min',
-          priority: 'K',
-          priorityColor: 'bg-blue-500',
-          completed: true
-        }
-      ],
-      color: 'dark:border-zinc-700 border-zinc-300',
-      subtitle: '2 tasks this month',
-      date: 'Wed, Jun 11, 2025',
-      taskCount: '2 tasks'
-    }
-  ])
+  const [columns, setColumns] = useState(getDefaultTaskColumns())
 
   const [newTaskInputs, setNewTaskInputs] = useState({})
   const [hoveredTask, setHoveredTask] = useState(null)
@@ -103,20 +35,45 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   const [expandedNotes, setExpandedNotes] = useState({})
   const [taskNotes, setTaskNotes] = useState({})
   const [openDropdowns, setOpenDropdowns] = useState({})
+  const [dropdownOpen, setDropdownOpen] = useState({})
+  const [hoveredSubtask, setHoveredSubtask] = useState(null)
+  const [editingSubtask, setEditingSubtask] = useState(null)
+  const [editingSubtaskValue, setEditingSubtaskValue] = useState('')
+  
+  // Testing panel state
+  const [testTaskName, setTestTaskName] = useState('')
+  const [testTaskDate, setTestTaskDate] = useState('')
+  const [testTargetColumn, setTestTargetColumn] = useState('thisweek')
+
+  // Check for expired tasks on component mount and every minute
+  useEffect(() => {
+    const checkExpiredTasks = () => {
+      setColumns(prevColumns => moveExpiredTasksToBacklog(prevColumns));
+    };
+
+    // Check immediately on mount
+    checkExpiredTasks();
+
+    // Set up interval to check every minute
+    const interval = setInterval(checkExpiredTasks, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate progress dynamically without causing re-renders
+  const getColumnProgress = (columnId) => {
+    if (columnId === 'thisweek') {
+      return calculateThisWeekProgress(columns);
+    } else if (columnId === 'today') {
+      return calculateTodayProgress(columns);
+    }
+    return null;
+  };
 
   const handleAddTask = (columnId, taskTitle) => {
     if (!taskTitle.trim()) return
 
-    const newTask = {
-      id: Date.now(),
-      title: taskTitle,
-      time: '0min',
-      estimate: 'EST',
-      priority: 'T',
-      priorityColor: 'bg-gray-500',
-      subtasks: [],
-      notes: ''
-    }
+    const newTask = createNewTask(taskTitle, columnId)
 
     setColumns(columns.map(col =>
       col.id === columnId
@@ -135,6 +92,68 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
         })
       }
     }, 100)
+  }
+
+  // Test task creation function (simulates API POST)
+  const handleCreateTestTask = () => {
+    if (!testTaskName.trim()) return
+
+    const now = new Date().toISOString()
+    const taskDate = testTaskDate ? new Date(testTaskDate) : new Date()
+    const currentWeek = getCurrentWeek()
+    
+    // Calculate week info based on the provided date
+    const taskYear = taskDate.getFullYear()
+    const startOfYear = new Date(taskYear, 0, 1)
+    const days = Math.floor((taskDate - startOfYear) / (24 * 60 * 60 * 1000))
+    const taskWeekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
+    const taskWeekString = `${taskYear}-W${taskWeekNumber.toString().padStart(2, '0')}`
+    
+    // Calculate deadline (next Monday from task date)
+    const dayOfWeek = taskDate.getDay()
+    const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek
+    const deadline = new Date(taskDate)
+    deadline.setDate(taskDate.getDate() + daysUntilMonday)
+    deadline.setHours(0, 0, 0, 0)
+    
+    // Smart column filtering: if task is not from current week and target is thisweek/today, move to backlog
+    let actualTargetColumn = testTargetColumn
+    let filterReason = ''
+    
+    if ((testTargetColumn === 'thisweek' || testTargetColumn === 'today') &&
+        taskWeekString !== currentWeek.weekString) {
+      actualTargetColumn = 'backlog'
+      filterReason = ` → Auto-moved to Backlog (not current week)`
+    }
+    
+    const testTask = createNewTask(
+      `${testTaskName} (${taskWeekString})${filterReason}`,
+      actualTargetColumn,
+      taskDate.toISOString()
+    )
+    
+    // Override specific test properties
+    Object.assign(testTask, {
+      taskGroup: {
+        name: 'TEST',
+        color: 'bg-purple-500'
+      },
+      deadline: deadline.toISOString(),
+      weekNumber: taskWeekNumber,
+      weekYear: taskYear,
+      assignedWeek: taskWeekString,
+      notes: `Created for testing week ${taskWeekString}. Original target: ${testTargetColumn}, Actual: ${actualTargetColumn}`
+    })
+
+    setColumns(columns.map(col =>
+      col.id === actualTargetColumn
+        ? { ...col, tasks: [...col.tasks, testTask] }
+        : col
+    ))
+
+    // Reset form
+    setTestTaskName('')
+    setTestTaskDate('')
   }
 
   const handleInputChange = (columnId, value) => {
@@ -169,6 +188,8 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
 
     if (!taskToComplete) return
 
+    const now = new Date().toISOString()
+
     // If task is being marked as completed, move it to Done column
     if (!taskToComplete.completed) {
       setColumns(columns.map(col => {
@@ -179,7 +200,13 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
           // Add completed task to Done column
           return {
             ...col,
-            tasks: [...col.tasks, { ...taskToComplete, completed: true }]
+            tasks: [...col.tasks, {
+              ...taskToComplete,
+              completed: true,
+              status: 'done',
+              completedAt: now,
+              updatedAt: now
+            }]
           }
         }
         return col
@@ -195,7 +222,13 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
             // Add uncompleted task to Today column
             return {
               ...col,
-              tasks: [...col.tasks, { ...taskToComplete, completed: false }]
+              tasks: [...col.tasks, {
+                ...taskToComplete,
+                completed: false,
+                status: 'inprogress',
+                completedAt: null,
+                updatedAt: now
+              }]
             }
           }
           return col
@@ -205,7 +238,13 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
         setColumns(columns.map(col => ({
           ...col,
           tasks: col.tasks.map(task =>
-            task.id === taskId ? { ...task, completed: false } : task
+            task.id === taskId ? {
+              ...task,
+              completed: false,
+              status: 'inprogress',
+              completedAt: null,
+              updatedAt: now
+            } : task
           )
         })))
       }
@@ -240,22 +279,69 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }
 
     // Move the task
+    const now = new Date().toISOString()
+    const currentWeek = getCurrentWeek()
+    
     setColumns(columns.map((col, index) => {
       if (index === sourceColumnIndex) {
         // Remove task from source column
         return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
       } else if (index === targetColumnIndex) {
         // Add task to target column
-        const updatedTask = {
-          ...taskToMove,
-          // Mark as completed if moving TO Done column
-          // Mark as incomplete if moving FROM Done column to any other column
-          completed: columnOrder[targetColumnIndex] === 'done'
-            ? true
-            : columnOrder[sourceColumnIndex] === 'done'
-              ? false
-              : taskToMove.completed
+        const targetColumnId = columnOrder[targetColumnIndex]
+        const sourceColumnId = columnOrder[sourceColumnIndex]
+        
+        let updatedTask = { ...taskToMove }
+        
+        // Special handling for different movements
+        if (sourceColumnId === 'backlog' && targetColumnId === 'thisweek') {
+          // Moving from backlog to this week: update to current week
+          updatedTask = updateTaskToCurrentWeek(updatedTask)
+        } else if (targetColumnId === 'today') {
+          // Moving to today: schedule for today
+          updatedTask = {
+            ...updatedTask,
+            scheduledForToday: true,
+            todayScheduledAt: now,
+            updatedAt: now,
+            status: 'inprogress'
+          }
+        } else if (sourceColumnId === 'today' && targetColumnId !== 'done') {
+          // Moving away from today: unschedule
+          updatedTask = {
+            ...updatedTask,
+            scheduledForToday: false,
+            todayScheduledAt: null,
+            updatedAt: now,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress'
+          }
+        } else if (targetColumnId === 'done') {
+          // Completing task
+          updatedTask = {
+            ...updatedTask,
+            completed: true,
+            status: 'done',
+            completedAt: now,
+            updatedAt: now
+          }
+        } else if (sourceColumnId === 'done') {
+          // Moving from done to other columns
+          updatedTask = {
+            ...updatedTask,
+            completed: false,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+            completedAt: null,
+            updatedAt: now
+          }
+        } else {
+          // General status update
+          updatedTask = {
+            ...updatedTask,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+            updatedAt: now
+          }
         }
+        
         return { ...col, tasks: [...col.tasks, updatedTask] }
       }
       return col
@@ -281,10 +367,15 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   const handleAddSubtask = (taskId, subtaskTitle) => {
     if (!subtaskTitle.trim()) return
 
+    // Find the task to get current subtask count for ordering
+    const currentTask = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
+    const currentSubtaskCount = currentTask?.subtasks?.length || 0
+
     const newSubtask = {
       id: Date.now(),
       title: subtaskTitle,
-      completed: false
+      completed: false,
+      order: currentSubtaskCount
     }
 
     setColumns(columns.map(col => ({
@@ -352,11 +443,12 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   }
 
   const handleSaveNotes = (taskId) => {
+    const now = new Date().toISOString()
     setColumns(columns.map(col => ({
       ...col,
       tasks: col.tasks.map(task =>
         task.id === taskId
-          ? { ...task, notes: taskNotes[taskId] || '' }
+          ? { ...task, notes: taskNotes[taskId] || '', updatedAt: now }
           : task
       )
     })))
@@ -382,11 +474,25 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   const handleDuplicateTask = (taskId) => {
     const taskToDuplicate = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
     if (taskToDuplicate) {
+      const now = new Date().toISOString()
+      const currentWeek = getCurrentWeek()
       const duplicatedTask = {
         ...taskToDuplicate,
         id: Date.now(),
         title: `${taskToDuplicate.title} (Copy)`,
-        completed: false // Reset completion status for duplicate
+        timeSpent: 0, // Reset time spent
+        time: formatTime(0), // Reset formatted time
+        completed: false, // Reset completion status for duplicate
+        status: 'inprogress', // Reset status
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null, // Reset completion timestamp
+        // Update week tracking to current week
+        weekNumber: currentWeek.weekNumber,
+        weekYear: currentWeek.year,
+        assignedWeek: currentWeek.weekString,
+        scheduledForToday: false, // Reset scheduling
+        todayScheduledAt: null
       }
       
       // Add to the same column as original task
@@ -398,6 +504,101 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
       }))
     }
     setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
+  }
+
+  // Subtask management handlers
+  const handleMoveSubtask = (taskId, subtaskId, direction) => {
+    setColumns(columns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task => {
+        if (task.id === taskId && task.subtasks) {
+          const subtasks = [...task.subtasks]
+          const currentIndex = subtasks.findIndex(st => st.id === subtaskId)
+          
+          if (direction === 'up' && currentIndex > 0) {
+            [subtasks[currentIndex], subtasks[currentIndex - 1]] = [subtasks[currentIndex - 1], subtasks[currentIndex]]
+          } else if (direction === 'down' && currentIndex < subtasks.length - 1) {
+            [subtasks[currentIndex], subtasks[currentIndex + 1]] = [subtasks[currentIndex + 1], subtasks[currentIndex]]
+          }
+          
+          return { ...task, subtasks }
+        }
+        return task
+      })
+    })))
+  }
+
+  const handleDeleteSubtask = (taskId, subtaskId) => {
+    setColumns(columns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, subtasks: task.subtasks?.filter(st => st.id !== subtaskId) || [] }
+          : task
+      )
+    })))
+  }
+
+  const handleEditSubtask = (taskId, subtaskId, title) => {
+    setEditingSubtask(`${taskId}-${subtaskId}`)
+    setEditingSubtaskValue(title)
+  }
+
+  const handleSaveSubtaskEdit = (taskId, subtaskId) => {
+    if (!editingSubtaskValue.trim()) return
+    
+    setColumns(columns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? {
+              ...task,
+              subtasks: task.subtasks?.map(subtask =>
+                subtask.id === subtaskId
+                  ? { ...subtask, title: editingSubtaskValue.trim() }
+                  : subtask
+              )
+            }
+          : task
+      )
+    })))
+    
+    setEditingSubtask(null)
+    setEditingSubtaskValue('')
+  }
+
+  const handleCancelSubtaskEdit = () => {
+    setEditingSubtask(null)
+    setEditingSubtaskValue('')
+  }
+
+  // Priority handler
+  const handleChangePriority = (taskId, newPriority) => {
+    const now = new Date().toISOString()
+    setColumns(columns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, priority: newPriority, updatedAt: now }
+          : task
+      )
+    })))
+    // Close all dropdowns after priority change
+    setDropdownOpen(prev => ({ ...prev, [taskId]: false }))
+  }
+
+  // Priority badge helper
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-500'
+      case 'medium':
+        return 'bg-yellow-500'
+      case 'low':
+        return 'bg-green-500'
+      default:
+        return 'bg-gray-500'
+    }
   }
 
   // Instant view switching - no slide animations
@@ -428,6 +629,72 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
       case 'kanban':
         return (
           <div className="flex h-[calc(100vh-105px)] flex-col">
+            {/* Testing Panel */}
+            <div className="mx-auto w-full max-w-7xl px-6 pt-4">
+              <Card className="mb-4 border-2 border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                        🧪 API Test Panel
+                      </span>
+                    </div>
+                    <div className="flex flex-1 items-center gap-3">
+                      <Input
+                        placeholder="Task name..."
+                        value={testTaskName}
+                        onChange={(e) => setTestTaskName(e.target.value)}
+                        className="h-8 w-48 border-purple-300 bg-white text-sm dark:border-purple-700 dark:bg-purple-900/50"
+                      />
+                      <Input
+                        type="date"
+                        value={testTaskDate}
+                        onChange={(e) => setTestTaskDate(e.target.value)}
+                        className="h-8 w-40 border-purple-300 bg-white text-sm dark:border-purple-700 dark:bg-purple-900/50"
+                      />
+                      <select
+                        value={testTargetColumn}
+                        onChange={(e) => setTestTargetColumn(e.target.value)}
+                        className="h-8 rounded border border-purple-300 bg-white px-2 text-sm dark:border-purple-700 dark:bg-purple-900/50 dark:text-white"
+                      >
+                        <option value="backlog">Backlog</option>
+                        <option value="thisweek">This Week</option>
+                        <option value="today">Today</option>
+                      </select>
+                      <Button
+                        onClick={handleCreateTestTask}
+                        size="sm"
+                        className="h-8 bg-purple-600 text-white hover:bg-purple-700"
+                      >
+                        Create Test Task
+                      </Button>
+                    </div>
+                    <div className="flex flex-col text-xs text-purple-600 dark:text-purple-400">
+                      <div>Current Week: {getCurrentWeek().weekString}</div>
+                      {testTaskDate && (() => {
+                        const taskDate = new Date(testTaskDate);
+                        const taskYear = taskDate.getFullYear();
+                        const startOfYear = new Date(taskYear, 0, 1);
+                        const days = Math.floor((taskDate - startOfYear) / (24 * 60 * 60 * 1000));
+                        const taskWeekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
+                        const taskWeekString = `${taskYear}-W${taskWeekNumber.toString().padStart(2, '0')}`;
+                        const currentWeek = getCurrentWeek();
+                        const willAutoFilter = (testTargetColumn === 'thisweek' || testTargetColumn === 'today') &&
+                                             taskWeekString !== currentWeek.weekString;
+                        
+                        return (
+                          <div className={willAutoFilter ? 'text-orange-600 dark:text-orange-400 font-medium' : ''}>
+                            Task Week: {taskWeekString}
+                            {willAutoFilter && ' → Will auto-move to Backlog'}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <div
               className="kanban-scrollbar flex-1 overflow-x-auto overflow-y-hidden"
               style={{
@@ -435,7 +702,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                 scrollbarColor: '#cbd5e1 #f1f5f9'
               }}
             >
-              <div className="mx-auto flex h-full min-w-fit max-w-7xl gap-4 p-6">
+              <div className="mx-auto flex h-full min-w-fit max-w-7xl gap-4 px-6 pb-6">
               {columns.map((column) => (
           <div key={column.id} className="flex h-[calc(100vh-150px)] w-full min-w-[350px] max-w-[370px] flex-col">
             <Card className={`flex h-full flex-col border ${column.color} bg-card`}>
@@ -443,22 +710,34 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
               <div className="flex items-center justify-between p-4 pb-3">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-card-foreground">{column.title}</h3>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
-                    <Plus className="h-5 w-5 text-zinc-700" />
-                  </Button>
+                  {column.id !== 'done' && (
+                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
+                 <Plus className="h-5 w-5 text-zinc-700" />
+               </Button>
+                )}
+                 
                 </div>
-                {column.progress && (
+                {(column.id === 'thisweek' || column.id === 'today') && (
                   <span className="text-sm text-muted-foreground">
-                    {column.progress.completed}/{column.progress.total} Done
+                    {(() => {
+                      const progress = getColumnProgress(column.id);
+                      return progress ? `${progress.completed}/${progress.total} Done` : '0/0 Done';
+                    })()}
                   </span>
+                )}
+                 {column.id === 'done' && (
+                  <p className="text-sm font-medium text-muted-foreground">{column.subtitle}</p>
                 )}
               </div>
 
               {/* Progress Bar */}
-              {column.progress && (
+              {(column.id === 'thisweek' || column.id === 'today') && (
                 <div className="mx-4 mb-6">
                   <Progress
-                    value={(column.progress.completed / column.progress.total) * 100}
+                    value={(() => {
+                      const progress = getColumnProgress(column.id);
+                      return progress && progress.total > 0 ? (progress.completed / progress.total) * 100 : 0;
+                    })()}
                     className="h-2 w-full"
                   />
                 </div>
@@ -467,8 +746,8 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
               {/* Done Column Header Info */}
               {column.id === 'done' && (
                 <div className="px-4 pb-4">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-muted-foreground">{column.subtitle}</p>
+                  <div className="flex justify-between text-right">
+          
                     <p className="text-sm text-muted-foreground">{column.date}</p>
                     <p className="text-sm text-muted-foreground">{column.taskCount}</p>
                   </div>
@@ -544,7 +823,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                         </div>
                         <div className="flex items-center gap-2">
                           <AnimatePresence mode="wait">
-                            {hoveredTask === task.id ? (
+                            {(hoveredTask === task.id || dropdownOpen[task.id]) ? (
                               <motion.div
                                 key="actions"
                                 initial={{ opacity: 0, x: 10 }}
@@ -603,7 +882,11 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                                 >
                                   <ChevronRight size={16} />
                                 </motion.button>
-                                <DropdownMenu>
+                                <DropdownMenu
+                                  onOpenChange={(open) => {
+                                    setDropdownOpen(prev => ({ ...prev, [task.id]: open }))
+                                  }}
+                                >
                                   <DropdownMenuTrigger asChild>
                                     <motion.button
                                       className="text-muted-foreground transition-colors hover:text-foreground"
@@ -614,22 +897,59 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                                       <MoreVertical size={16} />
                                     </motion.button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-32">
+                                  <DropdownMenuContent align="end" className="w-24">
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         handleDuplicateTask(task.id)
                                       }}
-                                      className="text-sm"
+                                      className="text-xs"
                                     >
                                       Duplicate
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation()
+                                        handleChangePriority(task.id, 'high')
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-2 w-2 rounded-full bg-red-500" />
+                                        High
+                                      </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleChangePriority(task.id, 'medium')
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                                        Medium
+                                      </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleChangePriority(task.id, 'low')
+                                      }}
+                                      className="text-xs"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-2 w-2 rounded-full bg-green-500" />
+                                        Low
+                                      </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
                                         handleDeleteTask(task.id)
                                       }}
-                                      className="text-sm text-destructive focus:text-destructive"
+                                      className="text-xs text-destructive focus:text-destructive"
                                     >
                                       Delete
                                     </DropdownMenuItem>
@@ -637,11 +957,18 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                                 </DropdownMenu>
                               </motion.div>
                             ) : (
-                              <div
-                                key="priority"
-                                className={`${task.priorityColor} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
-                              >
-                                {task.priority}
+                              <div key="badges" className="flex items-center gap-2">
+                                {/* Priority Badge */}
+                                <div
+                                  className={`${getPriorityColor(task.priority)} h-3 w-3 rounded-full`}
+                                  title={`Priority: ${task.priority}`}
+                                />
+                                {/* Task Group Badge */}
+                                <div
+                                  className={`${task.taskGroup.color} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
+                                >
+                                  {task.taskGroup.name}
+                                </div>
                               </div>
                             )}
                           </AnimatePresence>
@@ -719,10 +1046,12 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                                 {/* Subtask List */}
                                 {task.subtasks.length > 0 && (
                                   <div className="space-y-1">
-                                    {task.subtasks.map((subtask) => (
+                                    {task.subtasks.map((subtask, subtaskIndex) => (
                                       <div
                                         key={subtask.id}
-                                        className="flex items-center gap-2 py-1"
+                                        className="group relative flex items-center gap-2 py-1"
+                                        onMouseEnter={() => setHoveredSubtask(`${task.id}-${subtask.id}`)}
+                                        onMouseLeave={() => setHoveredSubtask(null)}
                                       >
                                         <button
                                           onClick={(e) => {
@@ -737,15 +1066,82 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                                             fill={subtask.completed ? 'currentColor' : 'none'}
                                           />
                                         </button>
-                                        <span
-                                          className={`text-sm ${
-                                            subtask.completed
-                                              ? 'line-through text-muted-foreground'
-                                              : 'text-foreground'
-                                          }`}
-                                        >
-                                          {subtask.title}
-                                        </span>
+                                        
+                                        {/* Editable title */}
+                                        {editingSubtask === `${task.id}-${subtask.id}` ? (
+                                          <input
+                                            type="text"
+                                            value={editingSubtaskValue}
+                                            onChange={(e) => setEditingSubtaskValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                handleSaveSubtaskEdit(task.id, subtask.id)
+                                              } else if (e.key === 'Escape') {
+                                                handleCancelSubtaskEdit()
+                                              }
+                                            }}
+                                            onBlur={() => handleSaveSubtaskEdit(task.id, subtask.id)}
+                                            className="flex-1 rounded border border-primary bg-background px-2 py-1 text-sm focus:outline-none"
+                                            autoFocus
+                                          />
+                                        ) : (
+                                          <span
+                                            className={`flex-1 text-sm cursor-pointer ${
+                                              subtask.completed
+                                                ? 'line-through text-muted-foreground'
+                                                : 'text-foreground'
+                                            }`}
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleEditSubtask(task.id, subtask.id, subtask.title)
+                                            }}
+                                          >
+                                            {subtask.title}
+                                          </span>
+                                        )}
+
+                                        {/* Hover controls */}
+                                        <AnimatePresence>
+                                          {hoveredSubtask === `${task.id}-${subtask.id}` && editingSubtask !== `${task.id}-${subtask.id}` && (
+                                            <motion.div
+                                              initial={{ opacity: 0, x: 10 }}
+                                              animate={{ opacity: 1, x: 0 }}
+                                              exit={{ opacity: 0, x: 10 }}
+                                              transition={{ duration: 0.15 }}
+                                              className="flex items-center gap-1"
+                                            >
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleMoveSubtask(task.id, subtask.id, 'up')
+                                                }}
+                                                disabled={subtaskIndex === 0}
+                                                className="text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                              >
+                                                <ArrowUp size={12} />
+                                              </button>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleMoveSubtask(task.id, subtask.id, 'down')
+                                                }}
+                                                disabled={subtaskIndex === task.subtasks.length - 1}
+                                                className="text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                              >
+                                                <ArrowDown size={12} />
+                                              </button>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleDeleteSubtask(task.id, subtask.id)
+                                                }}
+                                                className="text-muted-foreground hover:text-red-600"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </motion.div>
+                                          )}
+                                        </AnimatePresence>
                                       </div>
                                     ))}
                                   </div>
@@ -809,14 +1205,25 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                       )}
 
                       {/* Notes Section */}
-                      {expandedNotes[task.id] && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.2, ease: "easeInOut" }}
-                          className="mt-3 border-t border-border pt-3"
-                        >
+                      <AnimatePresence>
+                        {expandedNotes[task.id] && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{
+                              duration: 0.4,
+                              ease: [0.25, 0.1, 0.25, 1],
+                              opacity: { duration: 0.2, ease: "easeOut" },
+                              height: {
+                                duration: 0.4,
+                                ease: [0.25, 0.1, 0.25, 1],
+                                delay: expandedNotes[task.id] ? 0 : 0.15
+                              }
+                            }}
+                            className="mt-3 border-t border-border pt-3"
+                            style={{ overflow: 'hidden' }}
+                          >
                           {/* Formatting Toolbar */}
                           <div className="mb-3 flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-2">
                             <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
@@ -877,8 +1284,9 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                               Save Notes
                             </Button>
                           </div>
-                        </motion.div>
-                      )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                       {/* Notes Indicator */}
                       {task.notes && !expandedNotes[task.id] && (
@@ -906,7 +1314,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                     value={newTaskInputs[column.id] || ''}
                     onChange={(e) => handleInputChange(column.id, e.target.value)}
                     onKeyPress={(e) => handleKeyPress(e, column.id)}
-                    className="h-12 border-dashed border-zinc-700 bg-transparent text-sm text-foreground placeholder:font-semibold placeholder:text-muted-foreground"
+                    className="h-12 border-dashed border-zinc-300 bg-transparent text-sm text-foreground placeholder:font-semibold placeholder:text-muted-foreground dark:border-zinc-700"
                   />
                 </div>
               </div>
@@ -920,6 +1328,39 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                       All Clear
                     </div>
                   </Button>
+                )}
+                {column.id === 'thisweek' && (
+                  <div className="w-full px-16">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Week Progress</span>
+                      <span>{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </div>
+                    <div className="flex justify-between gap-1">
+                      {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => {
+                        // Get current day of week (0 = Sunday, 1 = Monday, etc.)
+                        const today = new Date()
+                        const currentDayOfWeek = today.getDay()
+                        // Convert to Monday-based (0 = Monday, 1 = Tuesday, etc.)
+                        const mondayBasedDay = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
+                        
+                        // Check if this day has passed (including today)
+                        const isPassed = index <= mondayBasedDay
+                        const isToday = index === mondayBasedDay
+                        
+                        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                        
+                        return (
+                          <DayWithLabel
+                            key={index}
+                            day={day}
+                            dayName={dayNames[index]}
+                            isToday={isToday}
+                            isPassed={isPassed}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
                 {column.id === 'today' && (
                   <Button
@@ -1063,6 +1504,62 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
      </AnimatePresence>
    </div>
  )
+}
+
+// Day with hover label component (similar to ButtonWithLabel in FocusModeWindow)
+const DayWithLabel = ({ day, dayName, isToday, isPassed }) => {
+  const [hovered, setHovered] = useState(false)
+  
+  return (
+    <motion.div
+      className={`flex items-center justify-center rounded-full text-xs font-medium transition-colors border cursor-pointer ${
+        isToday
+          ? 'bg-primary text-primary-foreground'
+          : isPassed
+          ? 'bg-green-500 text-white'
+          : 'bg-muted text-muted-foreground'
+      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      initial={false}
+      animate={{
+        width: hovered ? 80 : 20,
+        height: 20,
+        paddingLeft: hovered ? 8 : 0,
+        paddingRight: hovered ? 8 : 0,
+      }}
+      transition={{
+        duration: 0.3,
+        ease: "easeInOut"
+      }}
+      style={{
+        minHeight: 20,
+        overflow: "hidden"
+      }}
+    >
+      <motion.span
+        className="select-none text-center text-xs font-medium"
+        style={{
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%"
+        }}
+        animate={{
+          opacity: 1,
+          x: 0
+        }}
+        transition={{
+          duration: 0.3,
+          ease: "easeInOut"
+        }}
+      >
+        {hovered ? dayName : day}
+      </motion.span>
+    </motion.div>
+  )
 }
 
 export default TaskProgress

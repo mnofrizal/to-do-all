@@ -1,6 +1,6 @@
 # Todo Dashboard - Project Summary
 
-**Last Updated**: June 13, 2025
+**Last Updated**: June 15, 2025
 
 ---
 
@@ -37,6 +37,8 @@ src/
     │   │   ├── FloatingTodayWindow.jsx
     │   │   ├── FocusModeWindow.jsx
     │   │   └── ui/
+    │   ├── data/
+    │   │   └── taskData.js   # Reusable task data and utilities
     │   └── lib/
     │       └── utils.js
 ```
@@ -141,6 +143,15 @@ src/
 ---
 
 ## Changelog
+
+### June 15, 2025
+- **6:50 PM**: **Data Modularization - Task Data Extraction**
+  - Created `src/renderer/src/data/taskData.js` for reusable task management utilities
+  - Extracted all helper functions: `formatTime()`, `getCurrentWeek()`, `isCurrentWeekTask()`, etc.
+  - Moved dummy data to `getDefaultTaskColumns()` function for reuse across pages
+  - Updated `TaskProgress.jsx` to import from centralized data file
+  - Simplified task creation with `createNewTask()` helper function
+  - Enhanced code maintainability and reusability across components
 
 ### June 13, 2025
 - Refactored to single-window, multi-mode architecture (Normal, Floating, Focus).
