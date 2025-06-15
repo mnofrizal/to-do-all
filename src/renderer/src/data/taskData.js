@@ -315,7 +315,115 @@ export const getDefaultTaskColumns = () => [
         completed: true
       },
       {
-        id: 5,
+        id: 55,
+        title: 'Kerjain to do app',
+        timeSpent: 624, // 10hr 24min
+        estimatedTime: 480, // 8 hours
+        time: formatTime(624),
+        estimate: formatTime(480),
+        taskGroup: {
+          name: 'K',
+          color: 'bg-blue-500'
+        },
+        priority: 'high',
+        status: 'done',
+        createdAt: '2025-06-08T09:00:00.000Z',
+        updatedAt: '2025-06-11T18:24:00.000Z',
+        completedAt: '2025-06-11T18:24:00.000Z',
+        deadline: '2025-06-16T17:00:00.000Z',
+        // Week tracking fields (previous week)
+        weekNumber: getCurrentWeek().weekNumber - 1,
+        weekYear: getCurrentWeek().year,
+        assignedWeek: `${getCurrentWeek().year}-W${(getCurrentWeek().weekNumber - 1).toString().padStart(2, '0')}`,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        subtasks: [],
+        notes: '',
+        completed: true
+      },
+      {
+        id: 54,
+        title: 'Kerjain to do app',
+        timeSpent: 624, // 10hr 24min
+        estimatedTime: 480, // 8 hours
+        time: formatTime(624),
+        estimate: formatTime(480),
+        taskGroup: {
+          name: 'K',
+          color: 'bg-blue-500'
+        },
+        priority: 'high',
+        status: 'done',
+        createdAt: '2025-06-08T09:00:00.000Z',
+        updatedAt: '2025-06-11T18:24:00.000Z',
+        completedAt: '2025-06-11T18:24:00.000Z',
+        deadline: '2025-06-16T17:00:00.000Z',
+        // Week tracking fields (previous week)
+        weekNumber: getCurrentWeek().weekNumber - 1,
+        weekYear: getCurrentWeek().year,
+        assignedWeek: `${getCurrentWeek().year}-W${(getCurrentWeek().weekNumber - 1).toString().padStart(2, '0')}`,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        subtasks: [],
+        notes: '',
+        completed: true
+      },
+      {
+        id: 53,
+        title: 'Kerjain to do app',
+        timeSpent: 624, // 10hr 24min
+        estimatedTime: 480, // 8 hours
+        time: formatTime(624),
+        estimate: formatTime(480),
+        taskGroup: {
+          name: 'K',
+          color: 'bg-blue-500'
+        },
+        priority: 'high',
+        status: 'done',
+        createdAt: '2025-06-08T09:00:00.000Z',
+        updatedAt: '2025-06-11T18:24:00.000Z',
+        completedAt: '2025-06-11T18:24:00.000Z',
+        deadline: '2025-06-16T17:00:00.000Z',
+        // Week tracking fields (previous week)
+        weekNumber: getCurrentWeek().weekNumber - 1,
+        weekYear: getCurrentWeek().year,
+        assignedWeek: `${getCurrentWeek().year}-W${(getCurrentWeek().weekNumber - 1).toString().padStart(2, '0')}`,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        subtasks: [],
+        notes: '',
+        completed: true
+      },
+      {
+        id: 52,
+        title: 'Kerjain to do app',
+        timeSpent: 624, // 10hr 24min
+        estimatedTime: 480, // 8 hours
+        time: formatTime(624),
+        estimate: formatTime(480),
+        taskGroup: {
+          name: 'K',
+          color: 'bg-blue-500'
+        },
+        priority: 'high',
+        status: 'done',
+        createdAt: '2025-06-08T09:00:00.000Z',
+        updatedAt: '2025-06-11T18:24:00.000Z',
+        completedAt: '2025-06-11T18:24:00.000Z',
+        deadline: '2025-06-16T17:00:00.000Z',
+        // Week tracking fields (previous week)
+        weekNumber: getCurrentWeek().weekNumber - 1,
+        weekYear: getCurrentWeek().year,
+        assignedWeek: `${getCurrentWeek().year}-W${(getCurrentWeek().weekNumber - 1).toString().padStart(2, '0')}`,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        subtasks: [],
+        notes: '',
+        completed: true
+      },
+      {
+        id: 51,
         title: 'Kerjain to do app',
         timeSpent: 624, // 10hr 24min
         estimatedTime: 480, // 8 hours

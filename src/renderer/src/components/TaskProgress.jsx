@@ -8,6 +8,7 @@ import { Input } from './ui/input'
 import { Progress } from './ui/progress'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useTheme } from '../contexts/ThemeContext'
+import TaskFlowTimeline from './TaskFlowTimeline'
 import {
   formatTime,
   getCurrentWeek,
@@ -1403,52 +1404,10 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
      
      case 'timeline':
        return (
-         <div className="flex h-full flex-col p-6">
-           <div className="mb-6">
-             <h2 className="mb-2 text-2xl font-bold text-foreground">Timeline Map</h2>
-             <p className="text-muted-foreground">Visual timeline of task progress and milestones</p>
-           </div>
-           <div className="flex-1 rounded-lg border border-border bg-card p-6">
-             <div className="relative">
-               {/* Timeline line */}
-               <div className="absolute bottom-0 left-8 top-0 w-0.5 bg-border"></div>
-               
-               {/* Timeline items */}
-               <div className="space-y-8">
-                 <div className="flex items-start space-x-4">
-                   <div className="relative z-10 h-4 w-4 rounded-full border-2 border-background bg-blue-500"></div>
-                   <div className="flex-1">
-                     <div className="rounded-lg border border-border bg-background p-4">
-                       <h3 className="font-semibold text-foreground">Project Started</h3>
-                       <p className="text-sm text-muted-foreground">Initial setup and planning phase</p>
-                       <span className="text-xs text-muted-foreground">2 days ago</span>
-                     </div>
-                   </div>
-                 </div>
-                 
-                 <div className="flex items-start space-x-4">
-                   <div className="relative z-10 h-4 w-4 rounded-full border-2 border-background bg-yellow-500"></div>
-                   <div className="flex-1">
-                     <div className="rounded-lg border border-border bg-background p-4">
-                       <h3 className="font-semibold text-foreground">Development Phase</h3>
-                       <p className="text-sm text-muted-foreground">Core features implementation</p>
-                       <span className="text-xs text-muted-foreground">1 day ago</span>
-                     </div>
-                   </div>
-                 </div>
-                 
-                 <div className="flex items-start space-x-4">
-                   <div className="relative z-10 h-4 w-4 rounded-full border-2 border-background bg-green-500"></div>
-                   <div className="flex-1">
-                     <div className="rounded-lg border border-border bg-background p-4">
-                       <h3 className="font-semibold text-foreground">Testing & Review</h3>
-                       <p className="text-sm text-muted-foreground">Quality assurance and bug fixes</p>
-                       <span className="text-xs text-muted-foreground">Today</span>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             </div>
+         <div className="flex h-full p-6">
+           
+           <div className="flex-1 border border-border bg-card" style={{ minHeight: 600 }}>
+             <TaskFlowTimeline />
            </div>
          </div>
        )
