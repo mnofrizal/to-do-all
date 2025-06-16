@@ -98,22 +98,9 @@ const KanbanColumn = ({
           {column.id === 'done' && (
             <p className="text-sm font-medium text-muted-foreground">
               {(() => {
-                const groupedTasks = column.tasks.reduce((groups, task) => {
-                  if (!task.completedAt) return groups;
-                  const completionDate = new Date(task.completedAt).toDateString();
-                  if (!groups[completionDate]) {
-                    groups[completionDate] = [];
-                  }
-                  groups[completionDate].push(task);
-                  return groups;
-                }, {});
-                
-                const groupCount = Object.keys(groupedTasks).length;
                 const totalTasks = column.tasks.length;
-                
-                if (groupCount === 0) return 'No completed tasks';
-                if (groupCount === 1) return `${totalTasks} ${totalTasks === 1 ? 'task' : 'tasks'} completed`;
-                return `${totalTasks} ${totalTasks === 1 ? 'task' : 'tasks'} in ${groupCount} days`;
+                if (totalTasks === 0) return 'No tasks done';
+                return `${totalTasks} ${totalTasks === 1 ? 'task' : 'tasks'} done`;
               })()}
             </p>
           )}
@@ -132,37 +119,6 @@ const KanbanColumn = ({
           </div>
         )}
 
-        {/* Done Column Header Info */}
-        {column.id === 'done' && (
-          <div className="px-4 pb-4">
-            <div className="flex justify-between text-right">
-              <p className="text-sm text-muted-foreground">
-                {(() => {
-                  if (column.tasks.length === 0) return 'No tasks completed';
-                  
-                  // Get the most recent completion date
-                  const mostRecentTask = column.tasks.reduce((latest, task) => {
-                    if (!task.completedAt) return latest;
-                    if (!latest.completedAt) return task;
-                    return new Date(task.completedAt) > new Date(latest.completedAt) ? task : latest;
-                  }, {});
-                  
-                  if (!mostRecentTask.completedAt) return 'No completion date';
-                  
-                  return new Date(mostRecentTask.completedAt).toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  });
-                })()}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {column.tasks.length} {column.tasks.length === 1 ? 'task' : 'tasks'}
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Tasks and Add Task Container */}
         <div className="flex min-h-0 flex-1 flex-col">
@@ -198,72 +154,91 @@ const KanbanColumn = ({
                     new Date(dateB) - new Date(dateA)
                   );
                   
-                  return sortedGroups.map(([dateString, tasks]) => (
-                    <div key={dateString} className="mb-4">
-                      {/* Date Header */}
-                      <div className="mb-2 text-xs font-medium text-muted-foreground">
-                        {new Date(dateString).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </div>
+                  return sortedGroups.map(([dateString, tasks], index) => {
+                    const taskDate = new Date(dateString);
+                    const today = new Date();
+                    const isToday = taskDate.toDateString() === today.toDateString();
+                    
+                    return (
+                      <div key={dateString} className="mb-4">
+                        {/* Date Header with task count */}
+                        <div className="mb-2 flex justify-between text-xs font-medium text-muted-foreground">
+                          <span>
+                            {isToday ? (
+                              // For today, show day name + date
+                              taskDate.toLocaleDateString('id-ID', {
+                                weekday: 'long',
+                                day: 'numeric',
+                                month: 'short'
+                              })
+                            ) : (
+                              // For other days, just show date
+                              taskDate.toLocaleDateString('en-US', {
+                                day: 'numeric',
+                                month: 'short'
+                              })
+                            )}
+                          </span>
+                          <span>{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</span>
+                        </div>
                       
-                      {/* Tasks for this date */}
-                      <div className="space-y-3">
-                        {tasks.map((task, index) => (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            index={index}
-                            columnId={column.id}
-                            hoveredTask={hoveredTask}
-                            setHoveredTask={setHoveredTask}
-                            dropdownOpen={dropdownOpen}
-                            setDropdownOpen={setDropdownOpen}
-                            handleCompleteTask={handleCompleteTask}
-                            handleToggleSubtasks={handleToggleSubtasks}
-                            handleShowSubtaskInput={handleShowSubtaskInput}
-                            handleToggleNotes={handleToggleNotes}
-                            handleMoveTask={handleMoveTask}
-                            handleDuplicateTask={handleDuplicateTask}
-                            handleChangePriority={handleChangePriority}
-                            handleDeleteTask={handleDeleteTask}
-                            getPriorityColor={getPriorityColor}
-                            taskNotes={taskNotes}
-                            handleNotesChange={handleNotesChange}
-                            handleSaveNotes={handleSaveNotes}
-                            handleDeleteNotes={handleDeleteNotes}
-                            expandedNotes={expandedNotes}
-                            setExpandedNotes={setExpandedNotes}
-                            expandedSubtasks={expandedSubtasks}
-                            setExpandedSubtasks={setExpandedSubtasks}
-                            newSubtaskInputs={newSubtaskInputs}
-                            handleSubtaskInputChange={handleSubtaskInputChange}
-                            handleSubtaskKeyPress={handleSubtaskKeyPress}
-                            handleAddSubtask={handleAddSubtask}
-                            editingSubtask={editingSubtask}
-                            setEditingSubtask={setEditingSubtask}
-                            editingSubtaskValue={editingSubtaskValue}
-                            setEditingSubtaskValue={setEditingSubtaskValue}
-                            handleSaveSubtaskEdit={handleSaveSubtaskEdit}
-                            handleCancelSubtaskEdit={handleCancelSubtaskEdit}
-                            hoveredSubtask={hoveredSubtask}
-                            setHoveredSubtask={setHoveredSubtask}
-                            handleToggleSubtask={handleToggleSubtask}
-                            handleMoveSubtask={handleMoveSubtask}
-                            handleDeleteSubtask={handleDeleteSubtask}
-                            editingTask={editingTask}
-                            setEditingTask={setEditingTask}
-                            editingTaskValue={editingTaskValue}
-                            setEditingTaskValue={setEditingTaskValue}
-                            handleEditTask={handleEditTask}
-                            handleSaveTaskEdit={handleSaveTaskEdit}
-                            handleCancelTaskEdit={handleCancelTaskEdit}
-                          />
-                        ))}
+                        {/* Tasks for this date */}
+                        <div className="space-y-3">
+                          {tasks.map((task, index) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              index={index}
+                              columnId={column.id}
+                              hoveredTask={hoveredTask}
+                              setHoveredTask={setHoveredTask}
+                              dropdownOpen={dropdownOpen}
+                              setDropdownOpen={setDropdownOpen}
+                              handleCompleteTask={handleCompleteTask}
+                              handleToggleSubtasks={handleToggleSubtasks}
+                              handleShowSubtaskInput={handleShowSubtaskInput}
+                              handleToggleNotes={handleToggleNotes}
+                              handleMoveTask={handleMoveTask}
+                              handleDuplicateTask={handleDuplicateTask}
+                              handleChangePriority={handleChangePriority}
+                              handleDeleteTask={handleDeleteTask}
+                              getPriorityColor={getPriorityColor}
+                              taskNotes={taskNotes}
+                              handleNotesChange={handleNotesChange}
+                              handleSaveNotes={handleSaveNotes}
+                              handleDeleteNotes={handleDeleteNotes}
+                              expandedNotes={expandedNotes}
+                              setExpandedNotes={setExpandedNotes}
+                              expandedSubtasks={expandedSubtasks}
+                              setExpandedSubtasks={setExpandedSubtasks}
+                              newSubtaskInputs={newSubtaskInputs}
+                              handleSubtaskInputChange={handleSubtaskInputChange}
+                              handleSubtaskKeyPress={handleSubtaskKeyPress}
+                              handleAddSubtask={handleAddSubtask}
+                              editingSubtask={editingSubtask}
+                              setEditingSubtask={setEditingSubtask}
+                              editingSubtaskValue={editingSubtaskValue}
+                              setEditingSubtaskValue={setEditingSubtaskValue}
+                              handleSaveSubtaskEdit={handleSaveSubtaskEdit}
+                              handleCancelSubtaskEdit={handleCancelSubtaskEdit}
+                              hoveredSubtask={hoveredSubtask}
+                              setHoveredSubtask={setHoveredSubtask}
+                              handleToggleSubtask={handleToggleSubtask}
+                              handleMoveSubtask={handleMoveSubtask}
+                              handleDeleteSubtask={handleDeleteSubtask}
+                              editingTask={editingTask}
+                              setEditingTask={setEditingTask}
+                              editingTaskValue={editingTaskValue}
+                              setEditingTaskValue={setEditingTaskValue}
+                              handleEditTask={handleEditTask}
+                              handleSaveTaskEdit={handleSaveTaskEdit}
+                              handleCancelTaskEdit={handleCancelTaskEdit}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ));
+                    );
+                  });
                 })()
               ) : (
                 // Regular task list for other columns
