@@ -5,21 +5,70 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Input } from './ui/input'
 import { Progress } from './ui/progress'
+import FloatingTaskCard from './FloatingTaskCard'
+import {
+  formatTime,
+  getCurrentWeek,
+  getDefaultTaskColumns,
+  createNewTask,
+  calculateTodayProgress,
+  isToday,
+  updateTaskToCurrentWeek
+} from '../data/taskData'
 
-const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
-  const [tasks, setTasks] = useState(todayTasks)
+const FloatingTodayWindow = ({ onClose, onFocusMode, columns = null, onTaskUpdate }) => {
+  // Initialize with data from taskData or get default columns
+  const [taskColumns, setTaskColumns] = useState(columns || getDefaultTaskColumns())
   const [activeTask, setActiveTask] = useState(null)
-  const [timer, setTimer] = useState({ hours: 0, minutes: 0, seconds: 36 })
   const [newTaskInput, setNewTaskInput] = useState('')
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
+  
+  // Timer persistence - store timer state for each task
+  const [taskTimers, setTaskTimers] = useState({})
+  const [currentTimer, setCurrentTimer] = useState({ hours: 0, minutes: 0, seconds: 0 })
+  
+  // TaskCard related states
+  const [hoveredTask, setHoveredTask] = useState(null)
+  const [expandedSubtasks, setExpandedSubtasks] = useState({})
+  const [newSubtaskInputs, setNewSubtaskInputs] = useState({})
+  const [expandedNotes, setExpandedNotes] = useState({})
+  const [taskNotes, setTaskNotes] = useState({})
+  const [dropdownOpen, setDropdownOpen] = useState({})
+  const [hoveredSubtask, setHoveredSubtask] = useState(null)
+  const [editingSubtask, setEditingSubtask] = useState(null)
+  const [editingSubtaskValue, setEditingSubtaskValue] = useState('')
+  const [editingTask, setEditingTask] = useState(null)
+  const [editingTaskValue, setEditingTaskValue] = useState('')
+  
+  // Update columns when prop changes
+  useEffect(() => {
+    if (columns) {
+      setTaskColumns(columns)
+    }
+  }, [columns])
+  
+  // Get today's tasks from the Today column (exclude completed tasks)
+  const getTodayTasks = () => {
+    const todayColumn = taskColumns.find(col => col.id === 'today')
+    const todayTasks = todayColumn?.tasks.filter(task => !task.completed) || []
+    
+    // Sort tasks: active task first, then by creation date
+    return todayTasks.sort((a, b) => {
+      if (a.id === activeTask) return -1
+      if (b.id === activeTask) return 1
+      return new Date(a.createdAt) - new Date(b.createdAt)
+    })
+  }
+  
+  const tasks = getTodayTasks()
 
-  // Timer logic
+  // Timer logic with persistence
   useEffect(() => {
     let interval = null
     if (isTimerRunning && activeTask) {
       interval = setInterval(() => {
-        setTimer(prev => {
+        setCurrentTimer(prev => {
           let newSeconds = prev.seconds + 1
           let newMinutes = prev.minutes
           let newHours = prev.hours
@@ -33,7 +82,15 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
             newHours += 1
           }
 
-          return { hours: newHours, minutes: newMinutes, seconds: newSeconds }
+          const newTimer = { hours: newHours, minutes: newMinutes, seconds: newSeconds }
+          
+          // Save timer state for current task
+          setTaskTimers(prev => ({
+            ...prev,
+            [activeTask]: newTimer
+          }))
+
+          return newTimer
         })
       }, 1000)
     } else {
@@ -42,118 +99,580 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
     return () => clearInterval(interval)
   }, [isTimerRunning, activeTask])
 
-  // Initialize with sample tasks if none provided
+  // Load timer when active task changes
   useEffect(() => {
-    if (tasks.length === 0) {
-      setTasks([
-        {
-          id: 1,
-          title: 'RAB dan ANALISA',
-          time: '0min',
-          estimate: '0min',
-          priority: 'K',
-          priorityColor: 'bg-blue-500',
-          isActive: true
-        },
-        {
-          id: 2,
-          title: 'Test to do 2 makan enak maka...',
-          time: '10min',
-          estimate: '10min',
-          priority: 'K',
-          priorityColor: 'bg-blue-500'
-        },
-        {
-          id: 3,
-          title: 'edwf',
-          time: '0min',
-          estimate: '0min',
-          priority: 'T',
-          priorityColor: 'bg-yellow-500'
-        },
-        {
-          id: 4,
-          title: 'kamu takj tauu satasdsasa',
-          time: '0min',
-          estimate: '0min',
-          priority: 'T',
-          priorityColor: 'bg-yellow-500'
-        },
-        {
-          id: 5,
-          title: 'masak sate',
-          time: '10hr',
-          estimate: '0min',
-          priority: 'K',
-          priorityColor: 'bg-blue-500'
-        },
-        {
-          id: 6,
-          title: 'qwdqwdq',
-          time: '0min',
-          estimate: '0min',
-          priority: 'T',
-          priorityColor: 'bg-purple-500'
-        },
-        {
-          id: 7,
-          title: 'sarapan apg',
-          time: '0min',
-          estimate: '0min',
-          priority: 'T',
-          priorityColor: 'bg-purple-500'
-        }
-      ])
-      setActiveTask(1) // Set first task as active
+    if (activeTask && taskTimers[activeTask]) {
+      setCurrentTimer(taskTimers[activeTask])
+    } else if (activeTask) {
+      setCurrentTimer({ hours: 0, minutes: 0, seconds: 0 })
+    }
+  }, [activeTask, taskTimers])
+
+  // Initialize active task
+  useEffect(() => {
+    if (tasks.length > 0 && !activeTask) {
+      // Set first task as active
+      setActiveTask(tasks[0].id)
       setIsTimerRunning(true) // Auto-start timer when floating mode opens
     }
-  }, [tasks.length])
+  }, [tasks.length, activeTask])
 
-  // Auto-start timer when component mounts and activeTask is set
-  useEffect(() => {
-    if (activeTask && !isTimerRunning) {
-      setIsTimerRunning(true)
+  // Task control handlers
+  const handleActivateTask = (taskId) => {
+    // Save current timer state before switching
+    if (activeTask && currentTimer) {
+      setTaskTimers(prev => ({
+        ...prev,
+        [activeTask]: currentTimer
+      }))
     }
-  }, [activeTask])
-
-  const handleTaskClick = (taskId) => {
+    
     setActiveTask(taskId)
     setIsTimerRunning(true)
   }
 
+  const handleSkipTask = () => {
+    if (tasks.length <= 1) return
+    
+    const currentIndex = tasks.findIndex(t => t.id === activeTask)
+    const nextIndex = (currentIndex + 1) % tasks.length
+    const nextTask = tasks[nextIndex]
+    
+    if (nextTask) {
+      handleActivateTask(nextTask.id)
+    }
+  }
+
+  const handleToggleTimer = () => {
+    setIsTimerRunning(!isTimerRunning)
+  }
+
   const handleAddTask = () => {
     if (newTaskInput.trim()) {
-      const newTask = {
-        id: Date.now(),
-        title: newTaskInput,
-        time: '0min',
-        estimate: '0min',
-        priority: 'T',
-        priorityColor: 'bg-gray-500'
+      const newTask = createNewTask(newTaskInput, 'today')
+      
+      // Add task to Today column
+      const updatedColumns = taskColumns.map(col =>
+        col.id === 'today'
+          ? { ...col, tasks: [...col.tasks, newTask] }
+          : col
+      )
+      
+      setTaskColumns(updatedColumns)
+      
+      // Notify parent component of the update
+      if (onTaskUpdate) {
+        onTaskUpdate(updatedColumns)
       }
-      setTasks([...tasks, newTask])
+      
       setNewTaskInput('')
     }
   }
 
-  const formatTime = (time) => {
+  // TaskCard handlers
+  const handleCompleteTask = (taskId) => {
+    // Find the task and its current column
+    let taskToComplete = null
+    let sourceColumnId = null
+    
+    taskColumns.forEach(col => {
+      const task = col.tasks.find(t => t.id === taskId)
+      if (task) {
+        taskToComplete = task
+        sourceColumnId = col.id
+      }
+    })
+
+    if (!taskToComplete) return
+
+    const now = new Date().toISOString()
+
+    // If task is being marked as completed, move it to Done column
+    if (!taskToComplete.completed) {
+      const updatedColumns = taskColumns.map(col => {
+        if (col.id === sourceColumnId) {
+          // Remove task from current column
+          return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
+        } else if (col.id === 'done') {
+          // Add completed task to Done column
+          return {
+            ...col,
+            tasks: [...col.tasks, {
+              ...taskToComplete,
+              completed: true,
+              status: 'done',
+              completedAt: now,
+              updatedAt: now
+            }]
+          }
+        }
+        return col
+      })
+      
+      setTaskColumns(updatedColumns)
+      if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    } else {
+      // If task is being uncompleted from Done column, move it back to Today column
+      if (sourceColumnId === 'done') {
+        const updatedColumns = taskColumns.map(col => {
+          if (col.id === 'done') {
+            // Remove task from Done column
+            return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
+          } else if (col.id === 'today') {
+            // Add uncompleted task to Today column
+            return {
+              ...col,
+              tasks: [...col.tasks, {
+                ...taskToComplete,
+                completed: false,
+                status: 'inprogress',
+                completedAt: null,
+                updatedAt: now
+              }]
+            }
+          }
+          return col
+        })
+        
+        setTaskColumns(updatedColumns)
+        if (onTaskUpdate) onTaskUpdate(updatedColumns)
+      }
+    }
+  }
+
+  const handleMoveTask = (taskId, direction) => {
+    const columnOrder = ['backlog', 'thisweek', 'today', 'done']
+    let sourceColumnIndex = -1
+    let sourceColumn = null
+    let taskToMove = null
+
+    // Find the task and its current column
+    taskColumns.forEach((col, index) => {
+      const task = col.tasks.find(t => t.id === taskId)
+      if (task) {
+        sourceColumnIndex = index
+        sourceColumn = col
+        taskToMove = task
+      }
+    })
+
+    if (!taskToMove || sourceColumnIndex === -1) return
+
+    let targetColumnIndex = sourceColumnIndex
+    if (direction === 'left' && sourceColumnIndex > 0) {
+      targetColumnIndex = sourceColumnIndex - 1
+    } else if (direction === 'right' && sourceColumnIndex < columnOrder.length - 1) {
+      targetColumnIndex = sourceColumnIndex + 1
+    } else {
+      return // Can't move further
+    }
+
+    // Move the task
+    const now = new Date().toISOString()
+    const currentWeek = getCurrentWeek()
+    
+    const updatedColumns = taskColumns.map((col, index) => {
+      if (index === sourceColumnIndex) {
+        // Remove task from source column
+        return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
+      } else if (index === targetColumnIndex) {
+        // Add task to target column
+        const targetColumnId = columnOrder[targetColumnIndex]
+        const sourceColumnId = columnOrder[sourceColumnIndex]
+        
+        let updatedTask = { ...taskToMove }
+        
+        // Special handling for different movements
+        if (sourceColumnId === 'backlog' && targetColumnId === 'thisweek') {
+          // Moving from backlog to this week: update to current week
+          updatedTask = updateTaskToCurrentWeek(updatedTask)
+        } else if (targetColumnId === 'today') {
+          // Moving to today: schedule for today
+          updatedTask = {
+            ...updatedTask,
+            scheduledForToday: true,
+            todayScheduledAt: now,
+            updatedAt: now,
+            status: 'inprogress'
+          }
+        } else if (sourceColumnId === 'today' && targetColumnId !== 'done') {
+          // Moving away from today: unschedule
+          updatedTask = {
+            ...updatedTask,
+            scheduledForToday: false,
+            todayScheduledAt: null,
+            updatedAt: now,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress'
+          }
+        } else if (targetColumnId === 'done') {
+          // Completing task
+          updatedTask = {
+            ...updatedTask,
+            completed: true,
+            status: 'done',
+            completedAt: now,
+            updatedAt: now
+          }
+        } else if (sourceColumnId === 'done') {
+          // Moving from done to other columns
+          updatedTask = {
+            ...updatedTask,
+            completed: false,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+            completedAt: null,
+            updatedAt: now
+          }
+        } else {
+          // General status update
+          updatedTask = {
+            ...updatedTask,
+            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+            updatedAt: now
+          }
+        }
+        
+        return { ...col, tasks: [...col.tasks, updatedTask] }
+      }
+      return col
+    })
+    
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+  }
+
+  // Subtask handlers
+  const handleToggleSubtasks = (taskId) => {
+    setExpandedSubtasks(prev => ({
+      ...prev,
+      [taskId]: !prev[taskId]
+    }))
+  }
+
+  const handleShowSubtaskInput = (taskId) => {
+    setExpandedSubtasks(prev => ({
+      ...prev,
+      [taskId]: true
+    }))
+  }
+
+  const handleAddSubtask = (taskId, subtaskTitle) => {
+    if (!subtaskTitle.trim()) return
+
+    // Find the task to get current subtask count for ordering
+    const currentTask = taskColumns.flatMap(col => col.tasks).find(t => t.id === taskId)
+    const currentSubtaskCount = currentTask?.subtasks?.length || 0
+
+    const newSubtask = {
+      id: Date.now(),
+      title: subtaskTitle,
+      completed: false,
+      order: currentSubtaskCount
+    }
+
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, subtasks: [...(task.subtasks || []), newSubtask] }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    setNewSubtaskInputs({ ...newSubtaskInputs, [taskId]: '' })
+  }
+
+  const handleToggleSubtask = (taskId, subtaskId) => {
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? {
+              ...task,
+              subtasks: task.subtasks?.map(subtask =>
+                subtask.id === subtaskId
+                  ? { ...subtask, completed: !subtask.completed }
+                  : subtask
+              )
+            }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+  }
+
+  const handleSubtaskInputChange = (taskId, value) => {
+    setNewSubtaskInputs({ ...newSubtaskInputs, [taskId]: value })
+  }
+
+  const handleSubtaskKeyPress = (e, taskId) => {
+    if (e.key === 'Enter') {
+      handleAddSubtask(taskId, newSubtaskInputs[taskId])
+    }
+  }
+
+  // Notes handlers
+  const handleToggleNotes = (taskId) => {
+    setExpandedNotes(prev => ({
+      ...prev,
+      [taskId]: !prev[taskId]
+    }))
+    
+    // Initialize notes if not exists
+    if (!taskNotes[taskId]) {
+      const task = taskColumns.flatMap(col => col.tasks).find(t => t.id === taskId)
+      setTaskNotes(prev => ({
+        ...prev,
+        [taskId]: task?.notes || ''
+      }))
+    }
+  }
+
+  const handleNotesChange = (taskId, value) => {
+    setTaskNotes(prev => ({
+      ...prev,
+      [taskId]: value
+    }))
+  }
+
+  const handleSaveNotes = (taskId) => {
+    const now = new Date().toISOString()
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, notes: taskNotes[taskId] || '', updatedAt: now }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+  }
+
+  const handleDeleteNotes = (taskId) => {
+    const now = new Date().toISOString()
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, notes: '', updatedAt: now }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    
+    // Clear from local state too
+    setTaskNotes(prev => ({
+      ...prev,
+      [taskId]: ''
+    }))
+    setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+  }
+
+  // Task management handlers
+  const handleDeleteTask = (taskId) => {
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.filter(task => task.id !== taskId)
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+  }
+
+  const handleDuplicateTask = (taskId) => {
+    const taskToDuplicate = taskColumns.flatMap(col => col.tasks).find(t => t.id === taskId)
+    if (taskToDuplicate) {
+      const now = new Date().toISOString()
+      const currentWeek = getCurrentWeek()
+      const duplicatedTask = {
+        ...taskToDuplicate,
+        id: Date.now(),
+        title: `${taskToDuplicate.title} (Copy)`,
+        timeSpent: 0,
+        time: formatTime(0),
+        completed: false,
+        status: 'inprogress',
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+        weekNumber: currentWeek.weekNumber,
+        weekYear: currentWeek.year,
+        assignedWeek: currentWeek.weekString,
+        scheduledForToday: true,
+        todayScheduledAt: now
+      }
+      
+      // Add to Today column
+      const updatedColumns = taskColumns.map(col => {
+        if (col.id === 'today') {
+          return { ...col, tasks: [...col.tasks, duplicatedTask] }
+        }
+        return col
+      })
+
+      setTaskColumns(updatedColumns)
+      if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    }
+  }
+
+  // Subtask management handlers
+  const handleMoveSubtask = (taskId, subtaskId, direction) => {
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task => {
+        if (task.id === taskId && task.subtasks) {
+          const subtasks = [...task.subtasks]
+          const currentIndex = subtasks.findIndex(st => st.id === subtaskId)
+          
+          if (direction === 'up' && currentIndex > 0) {
+            [subtasks[currentIndex], subtasks[currentIndex - 1]] = [subtasks[currentIndex - 1], subtasks[currentIndex]]
+          } else if (direction === 'down' && currentIndex < subtasks.length - 1) {
+            [subtasks[currentIndex], subtasks[currentIndex + 1]] = [subtasks[currentIndex + 1], subtasks[currentIndex]]
+          }
+          
+          return { ...task, subtasks }
+        }
+        return task
+      })
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+  }
+
+  const handleDeleteSubtask = (taskId, subtaskId) => {
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, subtasks: task.subtasks?.filter(st => st.id !== subtaskId) || [] }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+  }
+
+  const handleSaveSubtaskEdit = (taskId, subtaskId) => {
+    if (!editingSubtaskValue.trim()) return
+    
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? {
+              ...task,
+              subtasks: task.subtasks?.map(subtask =>
+                subtask.id === subtaskId
+                  ? { ...subtask, title: editingSubtaskValue.trim() }
+                  : subtask
+              )
+            }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    
+    setEditingSubtask(null)
+    setEditingSubtaskValue('')
+  }
+
+  const handleCancelSubtaskEdit = () => {
+    setEditingSubtask(null)
+    setEditingSubtaskValue('')
+  }
+
+  // Task title editing handlers
+  const handleEditTask = (taskId, title) => {
+    setEditingTask(taskId)
+    setEditingTaskValue(title)
+  }
+
+  const handleSaveTaskEdit = (taskId) => {
+    if (!editingTaskValue.trim()) return
+    
+    const now = new Date().toISOString()
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, title: editingTaskValue.trim(), updatedAt: now }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    
+    setEditingTask(null)
+    setEditingTaskValue('')
+  }
+
+  const handleCancelTaskEdit = () => {
+    setEditingTask(null)
+    setEditingTaskValue('')
+  }
+
+  // Priority handler
+  const handleChangePriority = (taskId, newPriority) => {
+    const now = new Date().toISOString()
+    const updatedColumns = taskColumns.map(col => ({
+      ...col,
+      tasks: col.tasks.map(task =>
+        task.id === taskId
+          ? { ...task, priority: newPriority, updatedAt: now }
+          : task
+      )
+    }))
+
+    setTaskColumns(updatedColumns)
+    if (onTaskUpdate) onTaskUpdate(updatedColumns)
+    setDropdownOpen(prev => ({ ...prev, [taskId]: false }))
+  }
+
+  // Priority badge helper
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-500'
+      case 'medium':
+        return 'bg-yellow-500'
+      case 'low':
+        return 'bg-green-500'
+      default:
+        return 'bg-gray-500'
+    }
+  }
+
+  const formatTimerDisplay = (time) => {
     return `${time.hours.toString().padStart(2, '0')}:${time.minutes.toString().padStart(2, '0')}:${time.seconds.toString().padStart(2, '0')}`
   }
 
-  const completedTasks = tasks.filter(task => task.completed).length
-  const totalTasks = tasks.length
+  // Calculate progress using taskData functions
+  const todayProgress = calculateTodayProgress(taskColumns)
+  const completedTasks = todayProgress.completed
+  const totalTasks = tasks.length + completedTasks // Only count incomplete + completed today
   
-  // Calculate progress based on time spent vs estimates
+  // Calculate total estimated time for today's tasks
   const totalEstimateMinutes = tasks.reduce((total, task) => {
-    const estimate = task.estimate || '0min'
-    const minutes = parseInt(estimate.replace(/[^\d]/g, '')) || 0
-    return total + minutes
+    return total + (task.estimatedTime || 0)
   }, 0)
   
-  const currentProgressMinutes = timer.hours * 60 + timer.minutes
-  const progressPercentage = totalEstimateMinutes > 0
-    ? Math.min((currentProgressMinutes / totalEstimateMinutes) * 100, 100)
-    : (completedTasks / totalTasks) * 100
+  const currentProgressMinutes = currentTimer.hours * 60 + currentTimer.minutes
+  const progressPercentage = totalTasks > 0
+    ? (completedTasks / totalTasks) * 100
+    : 0
 
   return (
     <motion.div
@@ -206,7 +725,7 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
           {/* Estimate and Progress */}
           <div className="space-y-3 bg-background p-4 dark:bg-card">
             <div className="text-sm text-muted-foreground">
-              Est: {Math.floor(totalEstimateMinutes / 60)}hr {totalEstimateMinutes % 60}min
+              Est: {formatTime(totalEstimateMinutes)}
             </div>
             <div className="flex items-center justify-between">
               <Progress
@@ -219,50 +738,62 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, todayTasks = [] }) => {
             </div>
           </div>
 
-          {/* Active Task Timer */}
-          {activeTask && (
-            <div className="mx-4 mb-4">
-              <div className="rounded-lg border-2 border-primary bg-primary/5 p-3 dark:bg-primary/10">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-foreground">
-                    {tasks.find(t => t.id === activeTask)?.title || 'RAB dan ANALISA'}
-                  </span>
-                  <span className="font-mono text-xl font-bold text-foreground">
-                    {formatTime(timer)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Tasks List */}
           <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <div className="space-y-2">
-              {tasks.map((task) => (
-                <div
+            <div className="space-y-3">
+              {tasks.map((task, index) => (
+                <FloatingTaskCard
                   key={task.id}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all hover:bg-accent dark:hover:bg-accent ${
-                    task.id === activeTask 
-                      ? 'border-primary bg-primary/10 dark:bg-primary/20' 
-                      : 'border-border bg-card dark:bg-card hover:border-primary/50'
-                  }`}
-                  onClick={() => handleTaskClick(task.id)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-1 items-start gap-2">
-                      <Badge 
-                        className={`${task.priorityColor} text-white text-xs px-1.5 py-0.5 min-w-[20px] h-5 flex items-center justify-center`}
-                      >
-                        {task.priority}
-                      </Badge>
-                      <span className="text-sm leading-5 text-foreground">{task.title}</span>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>+ EST</span>
-                    <span>{task.estimate}</span>
-                  </div>
-                </div>
+                  task={task}
+                  index={index}
+                  isActive={task.id === activeTask}
+                  isTimerRunning={isTimerRunning}
+                  onActivateTask={handleActivateTask}
+                  onSkipTask={handleSkipTask}
+                  onToggleTimer={handleToggleTimer}
+                  onCompleteTask={handleCompleteTask}
+                  onGetCurrentTimer={() => currentTimer}
+                  onGetTaskTimer={(taskId) => taskTimers[taskId]}
+                  // Subtask handlers
+                  expandedSubtasks={expandedSubtasks}
+                  setExpandedSubtasks={setExpandedSubtasks}
+                  newSubtaskInputs={newSubtaskInputs}
+                  handleSubtaskInputChange={handleSubtaskInputChange}
+                  handleSubtaskKeyPress={handleSubtaskKeyPress}
+                  handleAddSubtask={handleAddSubtask}
+                  handleToggleSubtask={handleToggleSubtask}
+                  handleMoveSubtask={handleMoveSubtask}
+                  handleDeleteSubtask={handleDeleteSubtask}
+                  // Notes handlers
+                  expandedNotes={expandedNotes}
+                  setExpandedNotes={setExpandedNotes}
+                  taskNotes={taskNotes}
+                  handleNotesChange={handleNotesChange}
+                  handleSaveNotes={handleSaveNotes}
+                  handleDeleteNotes={handleDeleteNotes}
+                  // Task handlers
+                  handleDeleteTask={handleDeleteTask}
+                  handleDuplicateTask={handleDuplicateTask}
+                  handleChangePriority={handleChangePriority}
+                  getPriorityColor={getPriorityColor}
+                  // Edit handlers
+                  editingTask={editingTask}
+                  setEditingTask={setEditingTask}
+                  editingTaskValue={editingTaskValue}
+                  setEditingTaskValue={setEditingTaskValue}
+                  handleEditTask={handleEditTask}
+                  handleSaveTaskEdit={handleSaveTaskEdit}
+                  handleCancelTaskEdit={handleCancelTaskEdit}
+                  editingSubtask={editingSubtask}
+                  setEditingSubtask={setEditingSubtask}
+                  editingSubtaskValue={editingSubtaskValue}
+                  setEditingSubtaskValue={setEditingSubtaskValue}
+                  handleSaveSubtaskEdit={handleSaveSubtaskEdit}
+                  handleCancelSubtaskEdit={handleCancelSubtaskEdit}
+                  hoveredSubtask={hoveredSubtask}
+                  setHoveredSubtask={setHoveredSubtask}
+                />
               ))}
             </div>
 
