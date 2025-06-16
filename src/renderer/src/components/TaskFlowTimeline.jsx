@@ -199,9 +199,9 @@ const CustomSubflowNode = ({ data, selected }) => {
   
   const itemHeight = 75;
   const rowSpacing = 15;
-  const paddingY = 50;
+  const paddingY = 40;
   const dynamicHeight = Math.max(180, paddingY * 2 + (rows * itemHeight) + ((rows - 1) * rowSpacing));
-  
+ 
   return (
     <div
       className={`relative rounded-lg border-2 transition-all duration-300 ${
@@ -216,15 +216,15 @@ const CustomSubflowNode = ({ data, selected }) => {
       }}
     >
       {/* Subflow Header */}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-          {data.label || 'Attachments'}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-purple-700 dark:text-purple-300">
+          <Paperclip className="h-4 w-4" />
+          {data.label }
         </div>
         <div className="text-xs text-purple-600 dark:text-purple-400">
           ({attachmentCount} items)
         </div>
       </div>
-      
       {/* Connection Handle - Target for when connected to a task */}
       <Handle
         type="target"
@@ -274,12 +274,11 @@ function TaskFlowTimelineInner() {
     const paddingX = 25;
     const dynamicWidth = Math.max(350, paddingX * 2 + (itemsPerRow * itemWidth) + ((itemsPerRow - 1) * itemSpacing));
     
-    // Height: padding + (rows * item height + spacing between rows)
-    const itemHeight = 75;
-    const rowSpacing = 15;
-    const paddingY = 50;
-    const dynamicHeight = Math.max(180, paddingY * 2 + (rows * itemHeight) + ((rows - 1) * rowSpacing));
-    
+   // Height: padding + (rows * item height + spacing between rows)
+   const itemHeight = 75;
+   const rowSpacing = 15;
+   const paddingY = 30;
+   const dynamicHeight = Math.max(180, paddingY * 2 + (rows * itemHeight) + ((rows - 1) * rowSpacing));
     return {
       width: dynamicWidth,
       height: dynamicHeight,
@@ -302,9 +301,11 @@ function TaskFlowTimelineInner() {
     const rowIndex = Math.floor(index / itemsPerRow);
     const colIndex = index % itemsPerRow;
     
+    const titleHeight = 32; // Account for title space (same as in calculateSubflowLayout)
+    
     return {
       x: paddingX + (colIndex * (itemWidth + itemSpacing)),
-      y: paddingY + (rowIndex * (itemHeight + rowSpacing))
+      y: paddingY + titleHeight + (rowIndex * (itemHeight + rowSpacing))
     };
   };
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -347,7 +348,7 @@ function TaskFlowTimelineInner() {
   const attachmentTypes = [
     { id: 'word', name: 'Word', icon: FileText, iconName: 'FileText', color: 'bg-blue-500', extension: '.docx' },
     { id: 'excel', name: 'Excel', icon: FileSpreadsheet, iconName: 'FileSpreadsheet', color: 'bg-green-500', extension: '.xlsx' },
-    { id: 'powerpoint', name: 'PowerPoint', icon: Presentation, iconName: 'Presentation', color: 'bg-orange-500', extension: '.pptx' },
+    { id: 'powerpoint', name: 'PPT', icon: Presentation, iconName: 'Presentation', color: 'bg-orange-500', extension: '.pptx' },
     { id: 'notes', name: 'Notes', icon: StickyNote, iconName: 'StickyNote', color: 'bg-yellow-500', extension: '.txt' },
     { id: 'image', name: 'Image', icon: Image, iconName: 'Image', color: 'bg-purple-500', extension: '.jpg' },
     { id: 'audio', name: 'Audio', icon: Music, iconName: 'Music', color: 'bg-pink-500', extension: '.mp3' },
@@ -770,7 +771,7 @@ function TaskFlowTimelineInner() {
                 id: subflowId,
                 type: 'customSubflow',
                 data: {
-                  label: `${closestTaskNode.data.label} Attachments`,
+                  label: `${closestTaskNode.data.label}`,
                   taskId: closestTaskNode.id,
                   attachmentCount: 2,
                   backgroundColor: 'rgba(196, 181, 253, 0.15)',
@@ -2228,11 +2229,18 @@ function TaskFlowTimelineInner() {
       </div>
 
       <div className="relative flex flex-row" style={{ height: 'calc(100vh - 122px - 3rem)' }}>
+        {/* Fixed gradient overlays */}
+ 
         {/* Task List Sidebar - Absolute positioned for better scrolling */}
-        <div className="absolute left-0 top-0 z-10 flex h-full w-80 min-w-[18rem] max-w-xs flex-col border-r border-border bg-white shadow-lg dark:bg-zinc-900">
+        <div className="absolute left-0 top-0 z-10 flex h-full w-52 min-w-[18rem] max-w-xs flex-col border-r border-border bg-white pb-2 shadow-lg dark:bg-zinc-900">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="text-sm font-semibold text-foreground">Task Library</div>
             <div className="text-xs text-muted-foreground">Ctrl+1</div>
+          </div>
+          <div className="pointer-events-none">
+            <div className="absolute left-0 right-0 top-0 h-8 bg-gradient-to-b from-white to-transparent px-4 py-2 dark:from-zinc-900" />
+            {/* <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent px-4 py-2 dark:from-zinc-900" /> */}
+            <div className="absolute bottom-1 left-0 right-0 h-14 bg-gradient-to-t from-white to-transparent dark:from-zinc-900" />
           </div>
           <div className="px-4 py-2">
             <div className="relative">
@@ -2349,7 +2357,7 @@ function TaskFlowTimelineInner() {
               </button>
               
               {expandedSections.has('attachments') && (
-                <div className="mt-2 space-y-1 px-2">
+                <div className="mt-2 grid grid-cols-2 gap-4 px-2 pt-1">
                   {attachmentTypes.map((attachment) => (
                     <div
                       key={attachment.id}
@@ -2381,7 +2389,7 @@ function TaskFlowTimelineInner() {
 
         {/* Timeline Map - Adjusted margin to account for absolute sidebar */}
         <div className="relative flex h-full min-w-0 flex-1 flex-col bg-zinc-50 dark:bg-zinc-900" style={{
-          marginLeft: '20rem',
+          marginLeft: '17.8rem',
           marginRight: sidebarOpen ? '20rem' : '0'
         }}>
           <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2 dark:bg-zinc-800">
