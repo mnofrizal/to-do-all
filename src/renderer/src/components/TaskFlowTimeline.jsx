@@ -484,11 +484,14 @@ function TaskFlowTimelineInner() {
       // Prevent invalid connections:
       // 1. Orange handles (attachment) should not connect to blue handles (task flow)
       // 2. Blue handles (task flow) should not connect to orange handles (attachment)
+      // 3. Finished tasks should not be able to create new outgoing task flow connections
       const isInvalidConnection =
         (params.sourceHandle === 'attachment-right' && (params.targetHandle === 'top' || !params.targetHandle)) ||
         (params.sourceHandle === 'bottom' && params.targetHandle === 'attachment-left') ||
         (params.targetHandle === 'attachment-left' && (params.sourceHandle === 'bottom' || !params.sourceHandle)) ||
-        (params.targetHandle === 'top' && params.sourceHandle === 'attachment-right');
+        (params.targetHandle === 'top' && params.sourceHandle === 'attachment-right') ||
+        // Prevent connections from finished tasks' bottom handle
+        (params.sourceHandle === 'bottom' && sourceNode && sourceNode.data.isFinished);
       
       // Block invalid connections
       if (isInvalidConnection) {
@@ -1187,9 +1190,19 @@ function TaskFlowTimelineInner() {
           )
         );
         
-        // Update edge animations based on new task status
-        setEdges(currentEdges =>
-          currentEdges.map(edge => {
+        // Update edge animations and remove outgoing task flow connections if marking as finished
+        setEdges(currentEdges => {
+          let updatedEdges = currentEdges;
+          
+          // If marking as finished, remove outgoing task flow connections from bottom handle
+          if (newFinishedState) {
+            updatedEdges = currentEdges.filter(edge =>
+              !(edge.source === nodeId && edge.sourceHandle === 'bottom')
+            );
+          }
+          
+          // Update remaining edge animations based on new task status
+          return updatedEdges.map(edge => {
             // Update edges where this task is the source
             if (edge.source === nodeId) {
               const shouldAnimate = !newFinishedState && !node.data.completedAt;
@@ -1203,8 +1216,8 @@ function TaskFlowTimelineInner() {
               return { ...edge, animated: shouldAnimate };
             }
             return edge;
-          })
-        );
+          });
+        });
       }
       setContextMenu(null);
       // Clear context highlighting
@@ -1637,9 +1650,19 @@ function TaskFlowTimelineInner() {
         )
       );
       
-      // Update edge animations based on new task status
-      setEdges(currentEdges =>
-        currentEdges.map(edge => {
+      // Update edge animations and remove outgoing task flow connections if marking as finished
+      setEdges(currentEdges => {
+        let updatedEdges = currentEdges;
+        
+        // If marking as finished, remove outgoing task flow connections from bottom handle
+        if (newFinishedState) {
+          updatedEdges = currentEdges.filter(edge =>
+            !(edge.source === selectedNode.id && edge.sourceHandle === 'bottom')
+          );
+        }
+        
+        // Update remaining edge animations based on new task status
+        return updatedEdges.map(edge => {
           // Update edges where this task is the source
           if (edge.source === selectedNode.id) {
             const shouldAnimate = !newFinishedState && !selectedNode.data.completedAt;
@@ -1653,8 +1676,8 @@ function TaskFlowTimelineInner() {
             return { ...edge, animated: shouldAnimate };
           }
           return edge;
-        })
-      );
+        });
+      });
     }
   };
 
