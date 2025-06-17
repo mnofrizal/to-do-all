@@ -106,12 +106,12 @@ const FocusModeWindow = ({ onBack, onDone }) => {
           {/* Drag Handle */}
           <div className='flex items-center'>
             <span
-              className="flex items-center justify-center pl-0.5"
+              className="flex items-center justify-center pl-2"
               style={{ WebkitAppRegion: 'drag' }}
               aria-label="Drag"
               tabIndex={0}
             >
-              <GripVertical size={33} strokeWidth={2} className='text-zinc-600' />
+              <GripVertical size={25} strokeWidth={2} className='text-black' />
             </span>
           </div>
           <div className='flex-1 px-10'>
@@ -142,10 +142,10 @@ const FocusModeWindow = ({ onBack, onDone }) => {
         <div
           className="flex w-full items-center justify-between p-4 text-center"
         >
-          <h1 className="text-base tracking-wider text-foreground">
+          <h1 className="text-base font-semibold tracking-wider text-foreground">
             {activeTask.title}
           </h1>
-          <div className="text-xl font-semibold text-foreground">
+          <div className="text-lg font-bold tracking-wider text-foreground">
             {isTimerRunning ? formatTime(timer) : "PAUSED"}
           </div>
         </div>
