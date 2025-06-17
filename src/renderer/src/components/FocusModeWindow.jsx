@@ -13,42 +13,49 @@ import {
   Maximize2
 } from 'lucide-react'
 
-const FocusModeWindow = ({ onBack, onDone }) => {
-  const [timer, setTimer] = useState({ hours: 0, minutes: 59, seconds: 28 })
-  const [isTimerRunning, setIsTimerRunning] = useState(true)
-  const [activeTask] = useState({
-    id: 1,
-    title: 'RAB dan ANALISA'
-  })
+const FocusModeWindow = ({ 
+  onBack, 
+  onDone,
+  activeTask,
+  timer,
+  isTimerRunning,
+  onToggleTimer,
+  onCompleteTask,
+  onSkipTask,
+  onToggleNotes
+}) => {
   const [isHovered, setIsHovered] = useState(false)
 
-  // Timer logic
+  // Cursor tracking effect
   useEffect(() => {
-    let interval = null
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimer(prev => {
-          let newSeconds = prev.seconds + 1
-          let newMinutes = prev.minutes
-          let newHours = prev.hours
-
-          if (newSeconds >= 60) {
-            newSeconds = 0
-            newMinutes += 1
-          }
-          if (newMinutes >= 60) {
-            newMinutes = 0
-            newHours += 1
-          }
-
-          return { hours: newHours, minutes: newMinutes, seconds: newSeconds }
-        })
-      }, 1000)
-    } else {
-      clearInterval(interval)
+    // Start cursor tracking when component mounts
+    if (window.api?.cursorTracking) {
+      window.api.cursorTracking.start()
+      
+      const handleCursorUpdate = (event, data) => {
+        setIsHovered(data.isOverWindow)
+      }
+      
+      window.api.cursorTracking.onUpdate(handleCursorUpdate)
+      
+      return () => {
+        window.api.cursorTracking.stop()
+        window.api.cursorTracking.removeListener(handleCursorUpdate)
+      }
     }
-    return () => clearInterval(interval)
-  }, [isTimerRunning])
+  }, [])
+
+  // Position tracking effect
+  useEffect(() => {
+    // Start position tracking when component mounts
+    if (window.api?.positionTracking) {
+      window.api.positionTracking.start()
+      
+      return () => {
+        window.api.positionTracking.stop()
+      }
+    }
+  }, [])
 
   const formatTime = (time) => {
     return `${time.hours.toString().padStart(2, '0')}:${time.minutes.toString().padStart(2, '0')}:${time.seconds.toString().padStart(2, '0')}`
@@ -67,8 +74,10 @@ const FocusModeWindow = ({ onBack, onDone }) => {
     }
   }
 
-  const handleToggleTimer = () => {
-    setIsTimerRunning(!isTimerRunning)
+  const handleComplete = () => {
+    if (activeTask && onCompleteTask) {
+      onCompleteTask(activeTask.id)
+    }
   }
 
   return (
@@ -78,8 +87,6 @@ const FocusModeWindow = ({ onBack, onDone }) => {
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className="relative flex h-full w-full items-center"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
@@ -100,40 +107,39 @@ const FocusModeWindow = ({ onBack, onDone }) => {
         }}
       >
         <div
-          className="flex w-full items-center justify-between py-1.5"
-          style={{ WebkitAppRegion: 'no-drag' }}
+          className="flex w-full cursor-move items-center justify-center px-4 py-1.5"
+          style={{ WebkitAppRegion: 'drag' }}
         >
-          {/* Drag Handle */}
-          <div className='flex items-center'>
-            <span
-              className="flex items-center justify-center pl-2"
-              style={{ WebkitAppRegion: 'drag' }}
-              aria-label="Drag"
-              tabIndex={0}
-            >
-              <GripVertical size={25} strokeWidth={2} className='text-black' />
-            </span>
-          </div>
-          <div className='flex-1 px-10'>
-            <div className='flex items-center justify-between bg-white dark:border-zinc-700 dark:bg-zinc-800'>
-        
+          {/* Control Buttons - Non-draggable */}
+          <div
+            className='flex items-center justify-center'
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            <div className='flex items-center justify-center gap-2 bg-white dark:border-zinc-700 dark:bg-zinc-800'>
               {/* Minimize */}
               <ButtonWithLabel icon={Minus} label="Mini..." onClick={handleMinimize} />
               {/* Document/Notes */}
-              <ButtonWithLabel icon={FileText} label="Notes" />
+              <ButtonWithLabel
+                icon={FileText}
+                label="Notes"
+                onClick={() => onToggleNotes && onToggleNotes(activeTask?.id)}
+              />
               {/* Pause/Play Toggle */}
               <ButtonWithLabel
                 icon={isTimerRunning ? Pause : Play}
                 label={isTimerRunning ? "Pause" : "Play"}
-                onClick={handleToggleTimer}
+                onClick={onToggleTimer}
               />
               {/* Next */}
-              <ButtonWithLabel icon={SkipForward} label="Next" />
+              <ButtonWithLabel
+                icon={SkipForward}
+                label="Next"
+                onClick={onSkipTask}
+              />
               {/* Check */}
-              <CheckWithLabel />
+              <CheckWithLabel onClick={handleComplete} />
               {/* Expand */}
               <ButtonWithLabel icon={Maximize2} label="Expand" onClick={handleExpand} />
-            
             </div>
           </div>
         </div>
@@ -206,7 +212,7 @@ const ButtonWithLabel = ({ icon: Icon, label, onClick }) => {
   )
 }
 
-const CheckWithLabel = () => {
+const CheckWithLabel = ({ onClick }) => {
   const [hovered, setHovered] = useState(false)
   return (
     <motion.button
@@ -215,6 +221,7 @@ const CheckWithLabel = () => {
       tabIndex={0}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
       initial={false}
       animate={{
         width: hovered ? 80 : 24,

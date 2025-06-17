@@ -6,6 +6,8 @@ import icon from '../../resources/icon.png?asset'
 const isDev = !app.isPackaged
 
 let mainWindow = null
+let cursorTracker = null
+let focusModePosition = null // Store focus mode position
 
 function createWindow() {
   // Create the browser window.
@@ -87,6 +89,7 @@ ipcMain.on('window-show-controls', () => {
 
 // IPC handlers for window resize
 ipcMain.on('window-resize-floating', () => {
+  stopPositionTracking() // Stop tracking when leaving focus mode
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Get screen dimensions
     const primaryDisplay = screen.getPrimaryDisplay()
@@ -140,19 +143,32 @@ ipcMain.on('window-resize-focus', () => {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     
-    // Calculate focus window size and position (compact size)
+    // Calculate focus window size
     const focusWidth = 300
-    const focusHeight = Math.floor(screenHeight * 0.04) // 10% of screen height
-    const centerX = Math.floor((screenWidth - focusWidth) / 2)
-    const centerY = Math.floor((screenHeight - focusHeight) / 2)
+    const focusHeight = Math.floor(screenHeight * 0.04) // 4% of screen height
     
-    // Animate to focus size
+    // Use saved position or default to center
+    let targetX, targetY
+    if (focusModePosition) {
+      targetX = focusModePosition.x
+      targetY = focusModePosition.y
+      
+      // Ensure position is still within screen bounds
+      targetX = Math.max(0, Math.min(targetX, screenWidth - focusWidth))
+      targetY = Math.max(0, Math.min(targetY, screenHeight - focusHeight))
+    } else {
+      // Default to center if no saved position
+      targetX = Math.floor((screenWidth - focusWidth) / 2)
+      targetY = Math.floor((screenHeight - focusHeight) / 2)
+    }
+    
+    // Animate to focus size and position
     const currentBounds = mainWindow.getBounds()
     const animationSteps = 30
     const stepDuration = 10
     
-    const deltaX = (centerX - currentBounds.x) / animationSteps
-    const deltaY = (centerY - currentBounds.y) / animationSteps
+    const deltaX = (targetX - currentBounds.x) / animationSteps
+    const deltaY = (targetY - currentBounds.y) / animationSteps
     const deltaWidth = (focusWidth - currentBounds.width) / animationSteps
     const deltaHeight = (focusHeight - currentBounds.height) / animationSteps
     
@@ -175,6 +191,9 @@ ipcMain.on('window-resize-focus', () => {
         
         if (step <= animationSteps) {
           setTimeout(animateStep, stepDuration)
+        } else {
+          // Start tracking position changes after animation completes
+          startPositionTracking()
         }
       }
     }
@@ -184,6 +203,7 @@ ipcMain.on('window-resize-focus', () => {
 })
 
 ipcMain.on('window-resize-normal', () => {
+  stopPositionTracking() // Stop tracking when leaving focus mode
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Get screen dimensions for centering
     const primaryDisplay = screen.getPrimaryDisplay()
@@ -239,6 +259,86 @@ ipcMain.on('window-set-always-on-top', (event, flag) => {
   }
 })
 
+// Cursor tracking functions
+function startCursorTracking() {
+  if (cursorTracker) {
+    clearInterval(cursorTracker)
+  }
+  
+  cursorTracker = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        const point = screen.getCursorScreenPoint()
+        const bounds = mainWindow.getBounds()
+        
+        const isOverWindow = (
+          point.x >= bounds.x &&
+          point.x <= bounds.x + bounds.width &&
+          point.y >= bounds.y &&
+          point.y <= bounds.y + bounds.height
+        )
+        
+        mainWindow.webContents.send('cursor-position-update', {
+          isOverWindow,
+          position: point,
+          windowBounds: bounds
+        })
+      } catch (error) {
+        console.error('Cursor tracking error:', error)
+      }
+    }
+  }, 50) // 50ms for smooth detection
+}
+
+function stopCursorTracking() {
+  if (cursorTracker) {
+    clearInterval(cursorTracker)
+    cursorTracker = null
+  }
+}
+
+// Position tracking functions
+let positionTracker = null
+
+function startPositionTracking() {
+  if (positionTracker) {
+    clearInterval(positionTracker)
+  }
+  
+  positionTracker = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const bounds = mainWindow.getBounds()
+      // Save current position
+      focusModePosition = { x: bounds.x, y: bounds.y }
+    }
+  }, 500) // Check every 500ms
+}
+
+function stopPositionTracking() {
+  if (positionTracker) {
+    clearInterval(positionTracker)
+    positionTracker = null
+  }
+}
+
+// IPC handlers for cursor tracking
+ipcMain.on('start-cursor-tracking', () => {
+  startCursorTracking()
+})
+
+ipcMain.on('stop-cursor-tracking', () => {
+  stopCursorTracking()
+})
+
+// IPC handlers for position tracking
+ipcMain.on('start-position-tracking', () => {
+  startPositionTracking()
+})
+
+ipcMain.on('stop-position-tracking', () => {
+  stopPositionTracking()
+})
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -259,6 +359,8 @@ app.whenReady().then(() => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
+  stopCursorTracking() // Clean up cursor tracking
+  stopPositionTracking() // Clean up position tracking
   if (process.platform !== 'darwin') {
     app.quit()
   }

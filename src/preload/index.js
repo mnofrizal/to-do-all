@@ -13,6 +13,16 @@ const api = {
     setResizable: (resizable) => ipcRenderer.send('window-set-resizable', resizable),
     hideWindowControls: () => ipcRenderer.send('window-hide-controls'),
     showWindowControls: () => ipcRenderer.send('window-show-controls')
+  },
+  cursorTracking: {
+    start: () => ipcRenderer.send('start-cursor-tracking'),
+    stop: () => ipcRenderer.send('stop-cursor-tracking'),
+    onUpdate: (callback) => ipcRenderer.on('cursor-position-update', callback),
+    removeListener: (callback) => ipcRenderer.removeListener('cursor-position-update', callback)
+  },
+  positionTracking: {
+    start: () => ipcRenderer.send('start-position-tracking'),
+    stop: () => ipcRenderer.send('stop-position-tracking')
   }
 }
 

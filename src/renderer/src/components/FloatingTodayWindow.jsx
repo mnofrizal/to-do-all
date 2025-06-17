@@ -16,17 +16,24 @@ import {
   updateTaskToCurrentWeek
 } from '../data/taskData'
 
-const FloatingTodayWindow = ({ onClose, onFocusMode, columns = null, onTaskUpdate }) => {
+const FloatingTodayWindow = ({ 
+  onClose, 
+  onFocusMode, 
+  columns = null, 
+  onTaskUpdate,
+  // New shared state props
+  activeTask,
+  timer,
+  isTimerRunning,
+  onActivateTask,
+  onToggleTimer,
+  onCompleteTask,
+  onSkipTask
+}) => {
   // Initialize with data from taskData or get default columns
   const [taskColumns, setTaskColumns] = useState(columns || getDefaultTaskColumns())
-  const [activeTask, setActiveTask] = useState(null)
   const [newTaskInput, setNewTaskInput] = useState('')
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
-  
-  // Timer persistence - store timer state for each task
-  const [taskTimers, setTaskTimers] = useState({})
-  const [currentTimer, setCurrentTimer] = useState({ hours: 0, minutes: 0, seconds: 0 })
   
   // TaskCard related states
   const [hoveredTask, setHoveredTask] = useState(null)
@@ -63,89 +70,14 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, columns = null, onTaskUpdat
   
   const tasks = getTodayTasks()
 
-  // Timer logic with persistence
-  useEffect(() => {
-    let interval = null
-    if (isTimerRunning && activeTask) {
-      interval = setInterval(() => {
-        setCurrentTimer(prev => {
-          let newSeconds = prev.seconds + 1
-          let newMinutes = prev.minutes
-          let newHours = prev.hours
-
-          if (newSeconds >= 60) {
-            newSeconds = 0
-            newMinutes += 1
-          }
-          if (newMinutes >= 60) {
-            newMinutes = 0
-            newHours += 1
-          }
-
-          const newTimer = { hours: newHours, minutes: newMinutes, seconds: newSeconds }
-          
-          // Save timer state for current task
-          setTaskTimers(prev => ({
-            ...prev,
-            [activeTask]: newTimer
-          }))
-
-          return newTimer
-        })
-      }, 1000)
-    } else {
-      clearInterval(interval)
-    }
-    return () => clearInterval(interval)
-  }, [isTimerRunning, activeTask])
-
-  // Load timer when active task changes
-  useEffect(() => {
-    if (activeTask && taskTimers[activeTask]) {
-      setCurrentTimer(taskTimers[activeTask])
-    } else if (activeTask) {
-      setCurrentTimer({ hours: 0, minutes: 0, seconds: 0 })
-    }
-  }, [activeTask, taskTimers])
-
-  // Initialize active task
+  // Initialize active task if none set
   useEffect(() => {
     if (tasks.length > 0 && !activeTask) {
-      // Set first task as active
-      setActiveTask(tasks[0].id)
-      setIsTimerRunning(true) // Auto-start timer when floating mode opens
+      // Activate first task
+      const firstTask = tasks[0]
+      onActivateTask(firstTask)
     }
-  }, [tasks.length, activeTask])
-
-  // Task control handlers
-  const handleActivateTask = (taskId) => {
-    // Save current timer state before switching
-    if (activeTask && currentTimer) {
-      setTaskTimers(prev => ({
-        ...prev,
-        [activeTask]: currentTimer
-      }))
-    }
-    
-    setActiveTask(taskId)
-    setIsTimerRunning(true)
-  }
-
-  const handleSkipTask = () => {
-    if (tasks.length <= 1) return
-    
-    const currentIndex = tasks.findIndex(t => t.id === activeTask)
-    const nextIndex = (currentIndex + 1) % tasks.length
-    const nextTask = tasks[nextIndex]
-    
-    if (nextTask) {
-      handleActivateTask(nextTask.id)
-    }
-  }
-
-  const handleToggleTimer = () => {
-    setIsTimerRunning(!isTimerRunning)
-  }
+  }, [tasks.length, activeTask, onActivateTask])
 
   const handleAddTask = () => {
     if (newTaskInput.trim()) {
@@ -669,7 +601,7 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, columns = null, onTaskUpdat
     return total + (task.estimatedTime || 0)
   }, 0)
   
-  const currentProgressMinutes = currentTimer.hours * 60 + currentTimer.minutes
+  const currentProgressMinutes = timer?.hours * 60 + timer?.minutes || 0
   const progressPercentage = totalTasks > 0
     ? (completedTasks / totalTasks) * 100
     : 0
@@ -747,14 +679,13 @@ const FloatingTodayWindow = ({ onClose, onFocusMode, columns = null, onTaskUpdat
                   key={task.id}
                   task={task}
                   index={index}
-                  isActive={task.id === activeTask}
+                  isActive={task.id === activeTask?.id}
                   isTimerRunning={isTimerRunning}
-                  onActivateTask={handleActivateTask}
-                  onSkipTask={handleSkipTask}
-                  onToggleTimer={handleToggleTimer}
-                  onCompleteTask={handleCompleteTask}
-                  onGetCurrentTimer={() => currentTimer}
-                  onGetTaskTimer={(taskId) => taskTimers[taskId]}
+                  onActivateTask={() => onActivateTask(task)}
+                  onSkipTask={onSkipTask}
+                  onToggleTimer={onToggleTimer}
+                  onCompleteTask={onCompleteTask}
+                  onGetCurrentTimer={() => timer}
                   // Subtask handlers
                   expandedSubtasks={expandedSubtasks}
                   setExpandedSubtasks={setExpandedSubtasks}

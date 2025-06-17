@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './components/Sidebar'
 import HomePage from './components/HomePage'
@@ -15,6 +15,61 @@ const App = () => {
   const [selectedList, setSelectedList] = useState(null)
   const [activeTaskView, setActiveTaskView] = useState('kanban')
   const [windowMode, setWindowMode] = useState('normal') // 'normal' | 'floating' | 'focus'
+  
+  // Shared timer state
+  const [activeTask, setActiveTask] = useState(null)
+  const [timer, setTimer] = useState({ hours: 0, minutes: 0, seconds: 0 })
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+  
+  // Timer logic
+  useEffect(() => {
+    let interval = null
+    if (isTimerRunning && activeTask) {
+      interval = setInterval(() => {
+        setTimer(prev => {
+          let newSeconds = prev.seconds + 1
+          let newMinutes = prev.minutes
+          let newHours = prev.hours
+
+          if (newSeconds >= 60) {
+            newSeconds = 0
+            newMinutes += 1
+          }
+          if (newMinutes >= 60) {
+            newMinutes = 0
+            newHours += 1
+          }
+
+          return { hours: newHours, minutes: newMinutes, seconds: newSeconds }
+        })
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [isTimerRunning, activeTask])
+
+  const handleToggleTimer = () => {
+    setIsTimerRunning(prev => !prev)
+  }
+
+  const handleActivateTask = (task) => {
+    setActiveTask(task)
+    setIsTimerRunning(true)
+  }
+
+  const handleCompleteTask = (taskId) => {
+    // Stop timer when task is completed
+    setIsTimerRunning(false)
+    setActiveTask(null)
+    setTimer({ hours: 0, minutes: 0, seconds: 0 })
+    handleBackToNormal()
+  }
+
+  const handleSkipTask = () => {
+    // Reset timer when skipping task
+    setTimer({ hours: 0, minutes: 0, seconds: 0 })
+    setIsTimerRunning(false)
+    setActiveTask(null)
+  }
 
   const handleCardClick = (list) => {
     setSelectedList(list)
@@ -146,6 +201,16 @@ const App = () => {
           <FocusModeWindow
             onBack={handleBackToFloating}
             onDone={handleBackToNormal}
+            activeTask={activeTask}
+            timer={timer}
+            isTimerRunning={isTimerRunning}
+            onToggleTimer={handleToggleTimer}
+            onCompleteTask={handleCompleteTask}
+            onSkipTask={handleSkipTask}
+            onToggleNotes={(taskId) => {
+              // Handle notes toggling
+              console.log('Toggle notes for task:', taskId)
+            }}
           />
         </motion.div>
       )
@@ -168,6 +233,13 @@ const App = () => {
             onClose={handleBackToNormal}
             onFocusMode={handleFocusMode}
             todayTasks={todayTasks}
+            activeTask={activeTask}
+            timer={timer}
+            isTimerRunning={isTimerRunning}
+            onActivateTask={handleActivateTask}
+            onToggleTimer={handleToggleTimer}
+            onCompleteTask={handleCompleteTask}
+            onSkipTask={handleSkipTask}
           />
         </motion.div>
       )
