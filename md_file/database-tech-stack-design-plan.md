@@ -23,12 +23,14 @@ This document outlines a comprehensive database and tech stack design for your E
 ### React Flow Usage Analysis
 Your React Flow implementation is sophisticated, handling:
 - **Task Nodes**: Custom task cards with handles for connections
-- **Attachment Nodes**: File attachments that can connect to tasks
+- **Attachment Nodes**: File attachments that can be standalone or connected to tasks
+- **Note Nodes**: Text notes that can be standalone or connected to tasks
 - **Subflow Nodes**: Grouped attachment containers
-- **Dynamic Connections**: Task-to-task flow, task-to-attachment relationships
+- **Dynamic Connections**: Task-to-task flow, task-to-attachment/note relationships
 - **Drag & Drop**: From sidebar to canvas with auto-positioning
 - **Context Menus**: Right-click actions for nodes
 - **Real-time Updates**: Node highlighting, edge animations
+- **Standalone Functionality**: Notes and attachments can exist independently in TaskList
 
 ## Recommended Tech Stack
 
@@ -68,30 +70,34 @@ Database Stack
 graph TB
     subgraph "Frontend (Zustand Stores)"
         A[Task Store]
-        B[UI Store] 
+        B[UI Store]
         C[Timer Store]
         D[Flow Store]
         E[User Store]
+        F[Note Store]
+        G[Attachment Store]
     end
     
     subgraph "Database Layer"
-        F[Prisma Client]
-        G[SQLite Database]
+        H[Prisma Client]
+        I[SQLite Database]
     end
     
     subgraph "IPC Layer"
-        H[Database Service]
-        I[IPC Handlers]
+        J[Database Service]
+        K[IPC Handlers]
     end
     
-    A --> I
-    B --> I
-    C --> I
-    D --> I
-    E --> I
-    I --> H
-    H --> F
-    F --> G
+    A --> K
+    B --> K
+    C --> K
+    D --> K
+    E --> K
+    F --> K
+    G --> K
+    K --> J
+    J --> H
+    H --> I
 ```
 
 ## Database Schema Design
@@ -161,10 +167,9 @@ Task
 ├── id (String, Primary Key)
 ├── title (String)
 ├── description (String)
-├── notes (String)
-├── status (String: backlog/thisweek/today/done)
+├── status (String: backlog/inprogress/done)
 ├── completed (Boolean)
-├── priority (String: low/medium/high/urgent)
+├── priority (String: low/medium/high)
 ├── estimatedTime (Int, minutes)
 ├── timeSpent (Int, minutes)
 ├── deadline (DateTime)
@@ -173,7 +178,6 @@ Task
 ├── weekNumber (Int)
 ├── weekYear (Int)
 ├── assignedWeek (String)
-├── kanbanColumn (String: backlog/thisweek/today/done)
 ├── position (Int)
 ├── taskListId (String, Foreign Key)
 ├── workspaceId (String, Foreign Key)
@@ -221,7 +225,7 @@ FlowData
 └── updatedAt (DateTime)
 ```
 
-#### 5. Attachments & File Management
+#### 5. Attachments & Notes Management
 ```sql
 Attachment
 ├── id (String, Primary Key)
@@ -229,8 +233,23 @@ Attachment
 ├── filepath (String)
 ├── filesize (Int)
 ├── mimetype (String)
-├── taskId (String, Foreign Key)
+├── isStandalone (Boolean)
+├── flowPosition (JSON)
+├── taskId (String, Foreign Key, Optional)
+├── taskListId (String, Foreign Key)
 └── createdAt (DateTime)
+
+Note
+├── id (String, Primary Key)
+├── title (String)
+├── content (String)
+├── color (String)
+├── isStandalone (Boolean)
+├── flowPosition (JSON)
+├── taskId (String, Foreign Key, Optional)
+├── taskListId (String, Foreign Key)
+├── createdAt (DateTime)
+└── updatedAt (DateTime)
 ```
 
 #### 6. Sharing & Collaboration (Future)
@@ -276,8 +295,31 @@ const flowData = {
       data: {
         taskId: "actual-task-id-from-db",
         label: "Task Title",
-        kanbanColumn: "today",
+        status: "today",
         // ... other task data
+      }
+    },
+    {
+      id: "note-1",
+      type: "noteNode",
+      position: { x: 300, y: 150 },
+      data: {
+        noteId: "note-id-from-db",
+        title: "Standalone Note",
+        content: "This note exists independently",
+        isStandalone: true,
+        // ... other note data
+      }
+    },
+    {
+      id: "attachment-1",
+      type: "attachmentNode",
+      position: { x: 500, y: 200 },
+      data: {
+        attachmentId: "attachment-id-from-db",
+        filename: "document.pdf",
+        isStandalone: true,
+        // ... other attachment data
       }
     }
   ],
@@ -285,7 +327,7 @@ const flowData = {
     {
       id: "edge-1",
       source: "task-1",
-      target: "task-2",
+      target: "note-1", // Note can be connected to task
       // ... edge properties
     }
   ],
@@ -474,6 +516,7 @@ const useFlowStore = create(
     // Node operations
     addTaskNode: (task, position) => { /* ... */ },
     addAttachmentNode: (attachment, position) => { /* ... */ },
+    addNoteNode: (note, position) => { /* ... */ },
     updateNodeData: (nodeId, data) => { /* ... */ },
     removeNode: (nodeId) => { /* ... */ },
     
@@ -546,11 +589,15 @@ src/
 │   │   ├── taskService.js
 │   │   ├── flowService.js
 │   │   ├── timerService.js
+│   │   ├── attachmentService.js
+│   │   ├── noteService.js
 │   │   └── userService.js
 │   ├── ipc/
 │   │   ├── taskHandlers.js
 │   │   ├── flowHandlers.js
 │   │   ├── timerHandlers.js
+│   │   ├── attachmentHandlers.js
+│   │   ├── noteHandlers.js
 │   │   └── userHandlers.js
 │   └── index.js
 ├── renderer/src/
@@ -558,18 +605,24 @@ src/
 │   │   ├── taskStore.js
 │   │   ├── flowStore.js
 │   │   ├── timerStore.js
+│   │   ├── attachmentStore.js
+│   │   ├── noteStore.js
 │   │   ├── uiStore.js
 │   │   └── userStore.js
 │   ├── services/
 │   │   ├── taskService.js
 │   │   ├── flowService.js
-│   │   └── timerService.js
+│   │   ├── timerService.js
+│   │   ├── attachmentService.js
+│   │   └── noteService.js
 │   ├── components/
 │   │   └── ... (existing components)
 │   └── hooks/
 │       ├── useTaskOperations.js
 │       ├── useFlowOperations.js
-│       └── useTimerOperations.js
+│       ├── useTimerOperations.js
+│       ├── useAttachmentOperations.js
+│       └── useNoteOperations.js
 └── preload/
     └── index.js (IPC bridge)
 ```

@@ -9,6 +9,32 @@ User → Workspace (Sidebar: Default/Shared/Archive/Custom)
      → Focus Mode (1 task + timer)
 ```
 
+### Time Tracking Architecture
+```mermaid
+graph LR
+    A[User starts timer] --> B[Create TimeSession]
+    B --> C[startTime recorded]
+    C --> D[Timer running...]
+    D --> E[User stops timer]
+    E --> F[endTime recorded]
+    F --> G[duration calculated]
+    G --> H[Task.timeSpent updated]
+```
+
+### Task Status Flow
+```mermaid
+stateDiagram-v2
+    [*] --> backlog: Create Task
+    backlog --> inprogress: Move to This Week
+    inprogress --> today: Schedule for Today
+    today --> done: Complete Task
+    inprogress --> done: Complete Task
+    done --> [*]
+    
+    inprogress --> backlog: Move back (expired)
+    today --> backlog: Move back (expired)
+```
+
 ## 📊 **Corrected Entity Relationship Diagram**
 
 ```mermaid
@@ -31,6 +57,11 @@ erDiagram
     Task ||--o{ Subtask : "has many"
     Task ||--o{ TimeSession : "tracked in"
     Task ||--o{ Attachment : "has many"
+    Task ||--o{ Note : "has many"
+    
+    TaskList ||--o{ Attachment : "contains standalone"
+    TaskList ||--o{ Note : "contains standalone"
+    
     
     User {
         string id PK
@@ -96,7 +127,6 @@ erDiagram
         string id PK
         string title
         string description
-        string notes
         string status
         boolean completed
         string priority
@@ -159,7 +189,23 @@ erDiagram
         int filesize
         string mimetype
         string taskId FK
+        string taskListId FK
+        boolean isStandalone
+        json flowPosition
         datetime createdAt
+    }
+    
+    Note {
+        string id PK
+        string title
+        string content
+        string color
+        string taskId FK
+        string taskListId FK
+        boolean isStandalone
+        json flowPosition
+        datetime createdAt
+        datetime updatedAt
     }
     
     SharedWorkspace {
@@ -199,7 +245,6 @@ Based on your `taskData.js`, the Task entity should have:
   scheduledForToday: boolean,
   todayScheduledAt: ISO string | null,
   subtasks: array,
-  notes: string,
   completed: boolean
 }
 ```
@@ -248,11 +293,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  workspaces    Workspace[]
-  tasks         Task[]
-  timeSessions  TimeSession[]
-  preferences   UserPreferences?
-  flowData      FlowData[]
+  workspaces       Workspace[]
+  tasks            Task[]
+  timeSessions     TimeSession[]
+  preferences      UserPreferences?
+  flowData         FlowData[]
+  attachments      Attachment[]
+  notes            Note[]
   sharedWorkspaces SharedWorkspace[]
 }
 
@@ -269,18 +316,17 @@ model Workspace {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskLists TaskList[]
-  tasks     Task[]
-  flowData  FlowData[]
-  sharedWith SharedWorkspace[]
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskLists    TaskList[]
+  tasks        Task[]
+  flowData     FlowData[]
+  sharedWith   SharedWorkspace[]
 }
 
 model Task {
   id                String    @id @default(cuid())
   title             String
   description       String?
-  notes             String?
   status            String    @default("backlog") // backlog/inprogress/done
   completed         Boolean   @default(false)
   priority          String    @default("medium") // low/medium/high
@@ -310,6 +356,7 @@ model Task {
   subtasks     Subtask[]
   timeSessions TimeSession[]
   attachments  Attachment[]
+  notes        Note[]
 }
 
 model TimeSession {
@@ -326,6 +373,133 @@ model TimeSession {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   createdAt DateTime @default(now())
+}
+
+model TaskList {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String   @default("L")
+  iconColor   String   @default("bg-gray-500")
+  color       String?
+  position    Int      @default(0)
+  isArchived  Boolean  @default(false)
+  workspaceId String
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  flowData    FlowData[]
+  attachments Attachment[]
+  notes       Note[]
+}
+
+model TaskGroup {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("bg-blue-500")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tasks Task[]
+}
+
+model Subtask {
+  id        String   @id @default(cuid())
+  title     String
+  completed Boolean  @default(false)
+  position  Int      @default(0)
+  taskId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model UserPreferences {
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  theme              String  @default("system")
+  windowPosition     Json?
+  sidebarWidth       Int     @default(288)
+  defaultView        String  @default("kanban")
+  autoStartTimer     Boolean @default(false)
+  showCompletedTasks Boolean @default(true)
+  weekStartsOn       Int     @default(1)
+  timeFormat         String  @default("24h")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FlowData {
+  id           String   @id @default(cuid())
+  userId       String
+  workspaceId  String
+  taskListId   String
+  flowType     String   @default("timeline")
+  nodesData    Json
+  edgesData    Json
+  viewportData Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  taskList  TaskList  @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id           String  @id @default(cuid())
+  filename     String
+  filepath     String
+  filesize     Int
+  mimetype     String
+  isStandalone Boolean @default(false)
+  flowPosition Json?   // {x: number, y: number} for React Flow positioning
+  
+  // Optional relationships - either belongs to task OR standalone in tasklist
+  taskId      String?
+  taskListId  String
+  
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskList  TaskList  @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+}
+
+model Note {
+  id           String  @id @default(cuid())
+  title        String  @default("Note")
+  content      String  @default("")
+  color        String  @default("bg-yellow-200")
+  isStandalone Boolean @default(false)
+  flowPosition Json?   // {x: number, y: number} for React Flow positioning
+  
+  // Optional relationships - either belongs to task OR standalone in tasklist
+  taskId      String?
+  taskListId  String
+  
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskList  TaskList  @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SharedWorkspace {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  permission  String   @default("read") // read/write/admin
+  createdAt   DateTime @default(now())
+  
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([workspaceId, userId])
 }
 ```
 
