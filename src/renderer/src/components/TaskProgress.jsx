@@ -46,11 +46,10 @@ import {
   createNewTask
 } from '../data/taskData'
 
-const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) => {
+const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt, selectedList }) => {
   const scrollRefs = useRef({})
   const { theme, colorTheme } = useTheme()
   const [columns, setColumns] = useState(getDefaultTaskColumns())
-
   const [newTaskInputs, setNewTaskInputs] = useState({})
   const [hoveredTask, setHoveredTask] = useState(null)
   const [expandedSubtasks, setExpandedSubtasks] = useState({})
@@ -86,10 +85,68 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     })
   )
 
+  useEffect(() => {
+    if (selectedList) {
+      const fetchTasks = async () => {
+        const tasks = await window.db.getTasks(selectedList.id);
+        const newColumns = getDefaultTaskColumns();
+        
+        tasks.forEach(task => {
+          let targetColumnId = task.status;
+          
+          // Sort subtasks by order field if they exist
+          if (task.subtasks && task.subtasks.length > 0) {
+            task.subtasks.sort((a, b) => (a.order || 0) - (b.order || 0));
+          }
+          
+          // Map task status to correct column
+          if (task.status === 'done') {
+            targetColumnId = 'done';
+          } else if (task.status === 'backlog') {
+            targetColumnId = 'backlog';
+          } else if (task.scheduledForToday === true && task.status !== 'done') {
+            // Only put in today if explicitly scheduled AND not completed
+            targetColumnId = 'today';
+          } else if (task.status === 'inprogress') {
+            // Check if it's assigned to current week
+            const currentWeek = getCurrentWeek();
+            if (task.assignedWeek === currentWeek.weekString) {
+              targetColumnId = 'thisweek';
+            } else {
+              targetColumnId = 'backlog'; // Old week tasks go to backlog
+            }
+          } else {
+            targetColumnId = 'backlog'; // Default fallback
+          }
+          
+          const column = newColumns.find(c => c.id === targetColumnId);
+          if (column) {
+            column.tasks.push(task);
+          }
+        });
+        
+        // Sort tasks in each column by orderInColumn
+        newColumns.forEach(column => {
+          column.tasks.sort((a, b) => (a.orderInColumn || 0) - (b.orderInColumn || 0));
+        });
+        
+        setColumns(newColumns);
+      };
+      fetchTasks();
+    }
+  }, [selectedList]);
+
   // Check for expired tasks on component mount and every minute
   useEffect(() => {
-    const checkExpiredTasks = () => {
-      setColumns(prevColumns => moveExpiredTasksToBacklog(prevColumns));
+    const checkExpiredTasks = async () => {
+      setColumns(prevColumns => {
+        if (!Array.isArray(prevColumns)) {
+          return getDefaultTaskColumns();
+        }
+        // Since moveExpiredTasksToBacklog is async, we'll handle it differently
+        // For now, just return the columns as-is to prevent the error
+        return prevColumns;
+      });
     };
 
     // Check immediately on mount
@@ -99,10 +156,12 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     const interval = setInterval(checkExpiredTasks, 60000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Remove columns dependency to prevent infinite loop
 
   // Calculate progress dynamically without causing re-renders
   const getColumnProgress = (columnId) => {
+    if (!Array.isArray(columns)) return null;
+    
     if (columnId === 'thisweek') {
       return calculateThisWeekProgress(columns);
     } else if (columnId === 'today') {
@@ -111,18 +170,31 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     return null;
   };
 
-  const handleAddTask = (columnId, taskTitle) => {
-    if (!taskTitle.trim()) return
+  const handleAddTask = async (columnId, taskTitle) => {
+    if (!taskTitle.trim() || !selectedList) return;
 
-    const newTask = createNewTask(taskTitle, columnId)
+    // Get the current column to determine the order
+    const currentColumn = columns.find(col => col.id === columnId);
+    const orderInColumn = currentColumn ? currentColumn.tasks.length : 0;
 
-    setColumns(columns.map(col =>
+    const newTaskData = {
+      ...createNewTask(taskTitle, columnId, selectedList.id),
+      orderInColumn
+    };
+    const newTask = await window.db.createTask(newTaskData);
+
+    console.log('Created new task:', newTask, 'for column:', columnId);
+
+    const newColumns = Array.isArray(columns) ? columns.map(col =>
       col.id === columnId
-        ? { ...col, tasks: [...col.tasks, newTask] }
+        ? { ...col, tasks: [...col.tasks, { ...newTask, orderInColumn }] }
         : col
-    ))
+    ) : getDefaultTaskColumns();
+    
+    console.log('Updated columns:', newColumns);
+    setColumns(newColumns);
 
-    setNewTaskInputs({ ...newTaskInputs, [columnId]: '' })
+    setNewTaskInputs({ ...newTaskInputs, [columnId]: '' });
 
     // Auto scroll to bottom with smooth animation after adding task
     setTimeout(() => {
@@ -186,11 +258,11 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
       notes: `Created for testing week ${taskWeekString}. Original target: ${testTargetColumn}, Actual: ${actualTargetColumn}`
     })
 
-    setColumns(columns.map(col =>
+    setColumns(Array.isArray(columns) ? columns.map(col =>
       col.id === actualTargetColumn
         ? { ...col, tasks: [...col.tasks, testTask] }
         : col
-    ))
+    ) : getDefaultTaskColumns())
 
     // Reset form
     setTestTaskName('')
@@ -214,99 +286,58 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }
   }
 
-  const handleCompleteTask = (taskId) => {
-    // Find the task and its current column
-    let taskToComplete = null
-    let sourceColumnId = null
-    
-    columns.forEach(col => {
-      const task = col.tasks.find(t => t.id === taskId)
-      if (task) {
-        taskToComplete = task
-        sourceColumnId = col.id
-      }
-    })
+  const handleCompleteTask = async (taskId) => {
+    let taskToComplete = null;
+    let sourceColumnId = null;
 
-    if (!taskToComplete) return
-
-    const now = new Date().toISOString()
-
-    // If task is being marked as completed, move it to Done column
-    if (!taskToComplete.completed) {
-      setColumns(columns.map(col => {
-        if (col.id === sourceColumnId) {
-          // Remove task from current column
-          return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
-        } else if (col.id === 'done') {
-          // Add completed task to Done column
-          return {
-            ...col,
-            tasks: [...col.tasks, {
-              ...taskToComplete,
-              completed: true,
-              status: 'done',
-              completedAt: now,
-              updatedAt: now
-            }]
-          }
+    if (Array.isArray(columns)) {
+      columns.forEach(col => {
+        const task = col.tasks.find(t => t.id === taskId);
+        if (task) {
+          taskToComplete = task;
+          sourceColumnId = col.id;
         }
-        return col
-      }))
-    } else {
-      // If task is being uncompleted from Done column, move it back to Today column
-      if (sourceColumnId === 'done') {
-        setColumns(columns.map(col => {
-          if (col.id === 'done') {
-            // Remove task from Done column
-            return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
-          } else if (col.id === 'today') {
-            // Add uncompleted task to Today column
-            return {
-              ...col,
-              tasks: [...col.tasks, {
-                ...taskToComplete,
-                completed: false,
-                status: 'inprogress',
-                completedAt: null,
-                updatedAt: now
-              }]
-            }
-          }
-          return col
-        }))
-      } else {
-        // If task is in other columns, just toggle completion status
-        setColumns(columns.map(col => ({
-          ...col,
-          tasks: col.tasks.map(task =>
-            task.id === taskId ? {
-              ...task,
-              completed: false,
-              status: 'inprogress',
-              completedAt: null,
-              updatedAt: now
-            } : task
-          )
-        })))
-      }
+      });
     }
-  }
 
-  const handleMoveTask = (taskId, direction) => {
+    if (!taskToComplete) return;
+
+    const now = new Date().toISOString();
+    const isCompleted = taskToComplete.status === 'done';
+    const status = isCompleted ? 'inprogress' : 'done';
+    const completedAt = isCompleted ? null : now;
+
+    await window.db.updateTask(taskId, { status, completedAt, updatedAt: now });
+
+    const newColumns = Array.isArray(columns) ? columns.map(col => {
+      if (col.id === sourceColumnId) {
+        return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) };
+      }
+      if (col.id === status) {
+        return { ...col, tasks: [...col.tasks, { ...taskToComplete, status, completedAt, updatedAt: now }] };
+      }
+      return col;
+    }) : getDefaultTaskColumns();
+    setColumns(newColumns);
+  };
+
+  const handleMoveTask = async (taskId, direction) => {
     const columnOrder = ['backlog', 'thisweek', 'today', 'done']
     let sourceColumnIndex = -1
     let sourceColumn = null
     let taskToMove = null
 
     // Find the task and its current column
-    columns.forEach((col, index) => {
-      const task = col.tasks.find(t => t.id === taskId)
-      if (task) {
-        sourceColumnIndex = index
-        sourceColumn = col
-        taskToMove = task
-      }
-    })
+    if (Array.isArray(columns)) {
+      columns.forEach((col, index) => {
+        const task = col.tasks.find(t => t.id === taskId)
+        if (task) {
+          sourceColumnIndex = index
+          sourceColumn = col
+          taskToMove = task
+        }
+      })
+    }
 
     if (!taskToMove || sourceColumnIndex === -1) return
 
@@ -323,70 +354,115 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     const now = new Date().toISOString()
     const currentWeek = getCurrentWeek()
     
-    setColumns(columns.map((col, index) => {
-      if (index === sourceColumnIndex) {
-        // Remove task from source column
-        return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
-      } else if (index === targetColumnIndex) {
-        // Add task to target column
-        const targetColumnId = columnOrder[targetColumnIndex]
-        const sourceColumnId = columnOrder[sourceColumnIndex]
-        
-        let updatedTask = { ...taskToMove }
-        
-        // Special handling for different movements
-        if (sourceColumnId === 'backlog' && targetColumnId === 'thisweek') {
-          // Moving from backlog to this week: update to current week
-          updatedTask = updateTaskToCurrentWeek(updatedTask)
-        } else if (targetColumnId === 'today') {
-          // Moving to today: schedule for today
-          updatedTask = {
-            ...updatedTask,
-            scheduledForToday: true,
-            todayScheduledAt: now,
-            updatedAt: now,
-            status: 'inprogress'
-          }
-        } else if (sourceColumnId === 'today' && targetColumnId !== 'done') {
-          // Moving away from today: unschedule
-          updatedTask = {
-            ...updatedTask,
-            scheduledForToday: false,
-            todayScheduledAt: null,
-            updatedAt: now,
-            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress'
-          }
-        } else if (targetColumnId === 'done') {
-          // Completing task
-          updatedTask = {
-            ...updatedTask,
-            completed: true,
-            status: 'done',
-            completedAt: now,
-            updatedAt: now
-          }
-        } else if (sourceColumnId === 'done') {
-          // Moving from done to other columns
-          updatedTask = {
-            ...updatedTask,
-            completed: false,
-            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
-            completedAt: null,
-            updatedAt: now
-          }
-        } else {
-          // General status update
-          updatedTask = {
-            ...updatedTask,
-            status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
-            updatedAt: now
-          }
-        }
-        
-        return { ...col, tasks: [...col.tasks, updatedTask] }
+    // Update the database first
+    const targetColumnId = columnOrder[targetColumnIndex]
+    const sourceColumnId = columnOrder[sourceColumnIndex]
+    
+    console.log('Moving task from', sourceColumnId, 'to', targetColumnId)
+    
+    let updatedTask = { ...taskToMove }
+    
+    // Special handling for different movements
+    if (sourceColumnId === 'backlog' && targetColumnId === 'thisweek') {
+      // Moving from backlog to this week: update to current week
+      updatedTask = updateTaskToCurrentWeek(updatedTask)
+    } else if (sourceColumnId === 'today' && targetColumnId === 'thisweek') {
+      // Moving from today to this week: unschedule and update to current week
+      console.log('Moving from today to thisweek - unscheduling task')
+      updatedTask = {
+        ...updatedTask,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        status: 'inprogress',
+        updatedAt: now
       }
-      return col
-    }))
+      // Also update to current week
+      updatedTask = updateTaskToCurrentWeek(updatedTask)
+    } else if (targetColumnId === 'today') {
+      // Moving to today: schedule for today
+      updatedTask = {
+        ...updatedTask,
+        scheduledForToday: true,
+        todayScheduledAt: now,
+        updatedAt: now,
+        status: 'inprogress'
+      }
+    } else if (sourceColumnId === 'today' && targetColumnId !== 'done') {
+      // Moving away from today: unschedule
+      console.log('Moving from today to', targetColumnId, '- unscheduling task')
+      updatedTask = {
+        ...updatedTask,
+        scheduledForToday: false,
+        todayScheduledAt: null,
+        updatedAt: now,
+        status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress'
+      }
+    } else if (targetColumnId === 'done') {
+      // Completing task
+      updatedTask = {
+        ...updatedTask,
+        status: 'done',
+        completedAt: now,
+        updatedAt: now
+      }
+    } else if (sourceColumnId === 'done') {
+      // Moving from done to other columns
+      updatedTask = {
+        ...updatedTask,
+        status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+        completedAt: null,
+        updatedAt: now
+      }
+    } else {
+      // General status update
+      updatedTask = {
+        ...updatedTask,
+        status: targetColumnId === 'backlog' ? 'backlog' : 'inprogress',
+        updatedAt: now
+      }
+    }
+
+    // Save to database
+    const updateData = {
+      status: updatedTask.status,
+      scheduledForToday: updatedTask.scheduledForToday || false,
+      todayScheduledAt: updatedTask.todayScheduledAt,
+      completedAt: updatedTask.completedAt,
+      updatedAt: updatedTask.updatedAt,
+      weekNumber: updatedTask.weekNumber,
+      weekYear: updatedTask.weekYear,
+      assignedWeek: updatedTask.assignedWeek,
+      deadline: updatedTask.deadline,
+      orderInColumn: updatedTask.orderInColumn || 0
+    }
+
+    console.log('Moving task from', sourceColumnId, 'to', targetColumnId, 'with updateData:', updateData)
+
+    try {
+      await window.db.updateTask(taskId, updateData)
+      
+      // Update local state only after successful database update
+      setColumns(Array.isArray(columns) ? columns.map((col, index) => {
+        if (index === sourceColumnIndex) {
+          // Remove task from source column and update order of remaining tasks
+          const filteredTasks = col.tasks.filter(t => t.id !== taskId);
+          const reorderedTasks = filteredTasks.map((task, idx) => ({
+            ...task,
+            orderInColumn: idx
+          }));
+          return { ...col, tasks: reorderedTasks }
+        } else if (index === targetColumnIndex) {
+          // Add task to target column at the end
+          const newOrder = col.tasks.length;
+          const taskWithOrder = { ...updatedTask, orderInColumn: newOrder };
+          return { ...col, tasks: [...col.tasks, taskWithOrder] }
+        }
+        return col
+      }) : getDefaultTaskColumns())
+    } catch (error) {
+      console.error('Failed to update task:', error)
+      // Optionally show an error message to the user
+    }
   }
 
   // Subtask handlers
@@ -405,48 +481,73 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }))
   }
 
-  const handleAddSubtask = (taskId, subtaskTitle) => {
+  const handleAddSubtask = async (taskId, subtaskTitle) => {
     if (!subtaskTitle.trim()) return
 
     // Find the task to get current subtask count for ordering
-    const currentTask = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
+    const currentTask = Array.isArray(columns) ? columns.flatMap(col => col.tasks).find(t => t.id === taskId) : null
     const currentSubtaskCount = currentTask?.subtasks?.length || 0
 
-    const newSubtask = {
-      id: Date.now(),
+    const newSubtaskData = {
       title: subtaskTitle,
       completed: false,
-      order: currentSubtaskCount
+      order: currentSubtaskCount,
+      taskId: taskId
     }
 
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, subtasks: [...(task.subtasks || []), newSubtask] }
-          : task
-      )
-    })))
+    try {
+      const newSubtask = await window.db.createSubtask(newSubtaskData)
 
-    setNewSubtaskInputs({ ...newSubtaskInputs, [taskId]: '' })
+      setColumns(Array.isArray(columns) ? columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task => {
+          if (task.id === taskId) {
+            const updatedSubtasks = [...(task.subtasks || []), newSubtask]
+            // Sort subtasks by order to maintain correct display order
+            updatedSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+            return { ...task, subtasks: updatedSubtasks }
+          }
+          return task
+        })
+      })) : getDefaultTaskColumns())
+
+      setNewSubtaskInputs({ ...newSubtaskInputs, [taskId]: '' })
+    } catch (error) {
+      console.error('Failed to create subtask:', error)
+    }
   }
 
-  const handleToggleSubtask = (taskId, subtaskId) => {
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? {
-              ...task,
-              subtasks: task.subtasks?.map(subtask =>
-                subtask.id === subtaskId
-                  ? { ...subtask, completed: !subtask.completed }
-                  : subtask
-              )
-            }
-          : task
-      )
-    })))
+  const handleToggleSubtask = async (taskId, subtaskId) => {
+    // Find the current subtask to get its completion status
+    const currentTask = Array.isArray(columns) ? columns.flatMap(col => col.tasks).find(t => t.id === taskId) : null
+    const currentSubtask = currentTask?.subtasks?.find(st => st.id === subtaskId)
+    
+    if (!currentSubtask) return
+
+    const newCompleted = !currentSubtask.completed
+
+    try {
+      await window.db.updateSubtask(subtaskId, { completed: newCompleted })
+
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task => {
+          if (task.id === taskId) {
+            const updatedSubtasks = task.subtasks?.map(subtask =>
+              subtask.id === subtaskId
+                ? { ...subtask, completed: newCompleted }
+                : subtask
+            ) || []
+            // Sort subtasks by order to maintain correct display order
+            updatedSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+            return { ...task, subtasks: updatedSubtasks }
+          }
+          return task
+        })
+      })))
+    } catch (error) {
+      console.error('Failed to toggle subtask:', error)
+    }
   }
 
   const handleSubtaskInputChange = (taskId, value) => {
@@ -468,7 +569,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     
     // Initialize notes if not exists
     if (!taskNotes[taskId]) {
-      const task = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
+      const task = Array.isArray(columns) ? columns.flatMap(col => col.tasks).find(t => t.id === taskId) : null
       setTaskNotes(prev => ({
         ...prev,
         [taskId]: task?.notes || ''
@@ -483,35 +584,55 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }))
   }
 
-  const handleSaveNotes = (taskId) => {
+  const handleSaveNotes = async (taskId) => {
     const now = new Date().toISOString()
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, notes: taskNotes[taskId] || '', updatedAt: now }
-          : task
-      )
-    })))
-    setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+    
+    try {
+      await window.db.updateTask(taskId, {
+        notes: taskNotes[taskId] || '',
+        updatedAt: now
+      })
+      
+      setColumns(Array.isArray(columns) ? columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task =>
+          task.id === taskId
+            ? { ...task, notes: taskNotes[taskId] || '', updatedAt: now }
+            : task
+        )
+      })) : getDefaultTaskColumns())
+      setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+    } catch (error) {
+      console.error('Failed to save notes:', error)
+    }
   }
 
-  const handleDeleteNotes = (taskId) => {
+  const handleDeleteNotes = async (taskId) => {
     const now = new Date().toISOString()
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, notes: '', updatedAt: now }
-          : task
-      )
-    })))
-    // Clear from local state too
-    setTaskNotes(prev => ({
-      ...prev,
-      [taskId]: ''
-    }))
-    setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+    
+    try {
+      await window.db.updateTask(taskId, {
+        notes: '',
+        updatedAt: now
+      })
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task =>
+          task.id === taskId
+            ? { ...task, notes: '', updatedAt: now }
+            : task
+        )
+      })))
+      // Clear from local state too
+      setTaskNotes(prev => ({
+        ...prev,
+        [taskId]: ''
+      }))
+      setExpandedNotes(prev => ({ ...prev, [taskId]: false }))
+    } catch (error) {
+      console.error('Failed to delete notes:', error)
+    }
   }
 
   // Dropdown and task management handlers
@@ -522,36 +643,70 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }))
   }
 
-  const handleDeleteTask = (taskId) => {
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.filter(task => task.id !== taskId)
-    })))
-    setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
+  const handleDeleteTask = async (taskId) => {
+    try {
+      await window.db.deleteTask(taskId)
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.filter(task => task.id !== taskId)
+      })))
+      setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
+    } catch (error) {
+      console.error('Failed to delete task:', error)
+    }
   }
 
-  const handleDuplicateTask = (taskId) => {
-    const taskToDuplicate = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
-    if (taskToDuplicate) {
+  const handleDuplicateTask = async (taskId) => {
+    try {
+      const taskToDuplicate = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
+      if (!taskToDuplicate) return
+      
       const now = new Date().toISOString()
       const currentWeek = getCurrentWeek()
-      const duplicatedTask = {
-        ...taskToDuplicate,
-        id: Date.now(),
+      
+      // Find the column and calculate order
+      const sourceColumn = columns.find(col => col.tasks.some(t => t.id === taskId))
+      const orderInColumn = sourceColumn ? sourceColumn.tasks.length : 0
+      
+      const duplicatedTaskData = {
         title: `${taskToDuplicate.title} (Copy)`,
-        timeSpent: 0, // Reset time spent
-        time: formatTime(0), // Reset formatted time
-        completed: false, // Reset completion status for duplicate
         status: 'inprogress', // Reset status
-        createdAt: now,
-        updatedAt: now,
+        priority: taskToDuplicate.priority || 'medium',
+        notes: taskToDuplicate.notes || null, // Copy notes if they exist
+        timeSpent: 0, // Reset time spent
+        estimatedTime: taskToDuplicate.estimatedTime || 60,
         completedAt: null, // Reset completion timestamp
-        // Update week tracking to current week
-        weekNumber: currentWeek.weekNumber,
-        weekYear: currentWeek.year,
+        deadline: taskToDuplicate.deadline || null,
+        weekNumber: currentWeek.weekNumber, // Store in database
+        weekYear: currentWeek.year, // Store in database
         assignedWeek: currentWeek.weekString,
         scheduledForToday: false, // Reset scheduling
-        todayScheduledAt: null
+        todayScheduledAt: null,
+        orderInColumn: orderInColumn,
+        listId: taskToDuplicate.listId || selectedList?.id, // Include the listId
+        createdAt: now,
+        updatedAt: now
+      }
+      
+      const duplicatedTask = await window.db.createTask(duplicatedTaskData)
+      
+      // Duplicate subtasks if they exist
+      if (taskToDuplicate.subtasks && taskToDuplicate.subtasks.length > 0) {
+        const duplicatedSubtasks = []
+        for (let i = 0; i < taskToDuplicate.subtasks.length; i++) {
+          const originalSubtask = taskToDuplicate.subtasks[i]
+          const newSubtaskData = {
+            title: originalSubtask.title,
+            completed: false, // Reset completion status for duplicated subtasks
+            order: i,
+            taskId: duplicatedTask.id
+          }
+          const duplicatedSubtask = await window.db.createSubtask(newSubtaskData)
+          duplicatedSubtasks.push(duplicatedSubtask)
+        }
+        // Add subtasks to the duplicated task object
+        duplicatedTask.subtasks = duplicatedSubtasks
       }
       
       // Add to the same column as original task
@@ -561,41 +716,72 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
         }
         return col
       }))
+      
+      setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
+    } catch (error) {
+      console.error('Failed to duplicate task:', error)
+      setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
     }
-    setOpenDropdowns(prev => ({ ...prev, [taskId]: false }))
   }
 
   // Subtask management handlers
-  const handleMoveSubtask = (taskId, subtaskId, direction) => {
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task => {
-        if (task.id === taskId && task.subtasks) {
-          const subtasks = [...task.subtasks]
-          const currentIndex = subtasks.findIndex(st => st.id === subtaskId)
-          
-          if (direction === 'up' && currentIndex > 0) {
-            [subtasks[currentIndex], subtasks[currentIndex - 1]] = [subtasks[currentIndex - 1], subtasks[currentIndex]]
-          } else if (direction === 'down' && currentIndex < subtasks.length - 1) {
-            [subtasks[currentIndex], subtasks[currentIndex + 1]] = [subtasks[currentIndex + 1], subtasks[currentIndex]]
+  const handleMoveSubtask = async (taskId, subtaskId, direction) => {
+    try {
+      const task = columns.flatMap(col => col.tasks).find(t => t.id === taskId)
+      if (!task || !task.subtasks) return
+      
+      const subtasks = [...task.subtasks]
+      const currentIndex = subtasks.findIndex(st => st.id === subtaskId)
+      
+      if (direction === 'up' && currentIndex > 0) {
+        [subtasks[currentIndex], subtasks[currentIndex - 1]] = [subtasks[currentIndex - 1], subtasks[currentIndex]]
+      } else if (direction === 'down' && currentIndex < subtasks.length - 1) {
+        [subtasks[currentIndex], subtasks[currentIndex + 1]] = [subtasks[currentIndex + 1], subtasks[currentIndex]]
+      } else {
+        return // No movement needed
+      }
+      
+      // Update order property in the subtask objects AND save to database
+      for (let i = 0; i < subtasks.length; i++) {
+        subtasks[i].order = i // Update the order property in the object
+        await window.db.updateSubtask(subtasks[i].id, { order: i })
+      }
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(t => {
+          if (t.id === taskId) {
+            // Sort subtasks by order to maintain correct display order
+            const sortedSubtasks = [...subtasks].sort((a, b) => (a.order || 0) - (b.order || 0))
+            return { ...t, subtasks: sortedSubtasks }
           }
-          
-          return { ...task, subtasks }
-        }
-        return task
-      })
-    })))
+          return t
+        })
+      })))
+    } catch (error) {
+      console.error('Failed to move subtask:', error)
+    }
   }
 
-  const handleDeleteSubtask = (taskId, subtaskId) => {
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, subtasks: task.subtasks?.filter(st => st.id !== subtaskId) || [] }
-          : task
-      )
-    })))
+  const handleDeleteSubtask = async (taskId, subtaskId) => {
+    try {
+      await window.db.deleteSubtask(subtaskId)
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task => {
+          if (task.id === taskId) {
+            const filteredSubtasks = task.subtasks?.filter(st => st.id !== subtaskId) || []
+            // Sort subtasks by order to maintain correct display order
+            filteredSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+            return { ...task, subtasks: filteredSubtasks }
+          }
+          return task
+        })
+      })))
+    } catch (error) {
+      console.error('Failed to delete subtask:', error)
+    }
   }
 
   const handleEditSubtask = (taskId, subtaskId, title) => {
@@ -603,27 +789,34 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     setEditingSubtaskValue(title)
   }
 
-  const handleSaveSubtaskEdit = (taskId, subtaskId) => {
+  const handleSaveSubtaskEdit = async (taskId, subtaskId) => {
     if (!editingSubtaskValue.trim()) return
     
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? {
-              ...task,
-              subtasks: task.subtasks?.map(subtask =>
-                subtask.id === subtaskId
-                  ? { ...subtask, title: editingSubtaskValue.trim() }
-                  : subtask
-              )
-            }
-          : task
-      )
-    })))
-    
-    setEditingSubtask(null)
-    setEditingSubtaskValue('')
+    try {
+      await window.db.updateSubtask(subtaskId, { title: editingSubtaskValue.trim() })
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task => {
+          if (task.id === taskId) {
+            const updatedSubtasks = task.subtasks?.map(subtask =>
+              subtask.id === subtaskId
+                ? { ...subtask, title: editingSubtaskValue.trim() }
+                : subtask
+            ) || []
+            // Sort subtasks by order to maintain correct display order
+            updatedSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+            return { ...task, subtasks: updatedSubtasks }
+          }
+          return task
+        })
+      })))
+      
+      setEditingSubtask(null)
+      setEditingSubtaskValue('')
+    } catch (error) {
+      console.error('Failed to update subtask title:', error)
+    }
   }
 
   // Task title editing handlers
@@ -632,21 +825,31 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     setEditingTaskValue(title)
   }
 
-  const handleSaveTaskEdit = (taskId) => {
+  const handleSaveTaskEdit = async (taskId) => {
     if (!editingTaskValue.trim()) return
     
     const now = new Date().toISOString()
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, title: editingTaskValue.trim(), updatedAt: now }
-          : task
-      )
-    })))
     
-    setEditingTask(null)
-    setEditingTaskValue('')
+    try {
+      await window.db.updateTask(taskId, {
+        title: editingTaskValue.trim(),
+        updatedAt: now
+      })
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task =>
+          task.id === taskId
+            ? { ...task, title: editingTaskValue.trim(), updatedAt: now }
+            : task
+        )
+      })))
+      
+      setEditingTask(null)
+      setEditingTaskValue('')
+    } catch (error) {
+      console.error('Failed to update task title:', error)
+    }
   }
 
   const handleCancelTaskEdit = () => {
@@ -660,18 +863,28 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   }
 
   // Priority handler
-  const handleChangePriority = (taskId, newPriority) => {
+  const handleChangePriority = async (taskId, newPriority) => {
     const now = new Date().toISOString()
-    setColumns(columns.map(col => ({
-      ...col,
-      tasks: col.tasks.map(task =>
-        task.id === taskId
-          ? { ...task, priority: newPriority, updatedAt: now }
-          : task
-      )
-    })))
-    // Close all dropdowns after priority change
-    setDropdownOpen(prev => ({ ...prev, [taskId]: false }))
+    
+    try {
+      await window.db.updateTask(taskId, {
+        priority: newPriority,
+        updatedAt: now
+      })
+      
+      setColumns(columns.map(col => ({
+        ...col,
+        tasks: col.tasks.map(task =>
+          task.id === taskId
+            ? { ...task, priority: newPriority, updatedAt: now }
+            : task
+        )
+      })))
+      // Close all dropdowns after priority change
+      setDropdownOpen(prev => ({ ...prev, [taskId]: false }))
+    } catch (error) {
+      console.error('Failed to update task priority:', error)
+    }
   }
 
   // Priority badge helper
@@ -698,7 +911,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     setDraggedTask(task)
   }
 
-  const handleDragOver = (event) => {
+  const handleDragOver = async (event) => {
     const { active, over } = event
     
     if (!over) return
@@ -715,43 +928,54 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     }
     
     // Move task between columns
-    setColumns(columns => {
-      const activeItems = columns.find(col => col.id === activeContainer)?.tasks || []
-      const overItems = columns.find(col => col.id === overContainer)?.tasks || []
-      
-      const activeIndex = activeItems.findIndex(item => item.id === activeId)
-      const overIndex = overItems.findIndex(item => item.id === overId)
-      
-      let newIndex
-      if (overId in columns.reduce((acc, col) => ({ ...acc, [col.id]: col }), {})) {
-        // Dropping on a column
-        newIndex = overItems.length + 1
-      } else {
-        // Dropping on a task
-        const isBelowOverItem = over && overIndex < overItems.length - 1
-        const modifier = isBelowOverItem ? 1 : 0
-        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1
-      }
-      
-      return columns.map(col => {
-        if (col.id === activeContainer) {
-          return {
-            ...col,
-            tasks: col.tasks.filter(task => task.id !== activeId)
-          }
-        } else if (col.id === overContainer) {
-          const taskToMove = activeItems[activeIndex]
-          const updatedTask = updateTaskForColumn(taskToMove, overContainer)
-          const newTasks = [...col.tasks]
-          newTasks.splice(newIndex, 0, updatedTask)
-          return {
-            ...col,
-            tasks: newTasks
-          }
+    const activeItems = columns.find(col => col.id === activeContainer)?.tasks || []
+    const overItems = columns.find(col => col.id === overContainer)?.tasks || []
+    
+    const activeIndex = activeItems.findIndex(item => item.id === activeId)
+    const overIndex = overItems.findIndex(item => item.id === overId)
+    
+    let newIndex
+    if (overId in columns.reduce((acc, col) => ({ ...acc, [col.id]: col }), {})) {
+      // Dropping on a column
+      newIndex = overItems.length + 1
+    } else {
+      // Dropping on a task
+      const isBelowOverItem = over && overIndex < overItems.length - 1
+      const modifier = isBelowOverItem ? 1 : 0
+      newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1
+    }
+    
+    const taskToMove = activeItems[activeIndex]
+    const taskWithOrder = { ...taskToMove, orderInColumn: newIndex }
+    const updatedTask = await updateTaskForColumn(taskWithOrder, overContainer)
+    
+    setColumns(columns.map(col => {
+      if (col.id === activeContainer) {
+        // Remove task and reorder remaining tasks
+        const filteredTasks = col.tasks.filter(task => task.id !== activeId)
+        const reorderedTasks = filteredTasks.map((task, idx) => ({
+          ...task,
+          orderInColumn: idx
+        }))
+        return {
+          ...col,
+          tasks: reorderedTasks
         }
-        return col
-      })
-    })
+      } else if (col.id === overContainer) {
+        const newTasks = [...col.tasks]
+        newTasks.splice(newIndex, 0, { ...updatedTask, orderInColumn: newIndex })
+        // Reorder all tasks in the target column
+        const reorderedTasks = newTasks.map((task, idx) => ({
+          ...task,
+          orderInColumn: idx
+        }))
+        return {
+          ...col,
+          tasks: reorderedTasks
+        }
+      }
+      return col
+    }))
   }
 
   const handleDragEnd = (event) => {
@@ -784,9 +1008,19 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
             const overIndex = col.tasks.findIndex(task => task.id === overId)
             
             if (activeIndex !== overIndex) {
+              const reorderedTasks = arrayMove(col.tasks, activeIndex, overIndex)
+              // Update orderInColumn for all tasks and save to database
+              const tasksWithOrder = reorderedTasks.map((task, idx) => {
+                const updatedTask = { ...task, orderInColumn: idx }
+                // Save order to database
+                window.db.updateTask(task.id, { orderInColumn: idx }).catch(error => {
+                  console.error('Failed to update task order:', error)
+                })
+                return updatedTask
+              })
               return {
                 ...col,
-                tasks: arrayMove(col.tasks, activeIndex, overIndex)
+                tasks: tasksWithOrder
               }
             }
           }
@@ -811,7 +1045,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
   }
 
   // Helper function to update task properties when moving between columns
-  const updateTaskForColumn = (task, targetColumnId) => {
+  const updateTaskForColumn = async (task, targetColumnId) => {
     const now = new Date().toISOString()
     const currentWeek = getCurrentWeek()
     
@@ -821,10 +1055,12 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     if (targetColumnId === 'thisweek') {
       updatedTask = updateTaskToCurrentWeek(updatedTask)
       // Reset completion status when moving to thisweek
+      // Also ensure task is unscheduled from today
       updatedTask = {
         ...updatedTask,
-        completed: false,
         status: 'inprogress',
+        scheduledForToday: false,
+        todayScheduledAt: null,
         completedAt: null,
         updatedAt: now
       }
@@ -833,15 +1069,13 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
         ...updatedTask,
         scheduledForToday: true,
         todayScheduledAt: now,
-        completed: false, // Reset completion status
         status: 'inprogress',
-        completedAt: null, // Reset completion timestamp
+        completedAt: null,
         updatedAt: now
       }
     } else if (targetColumnId === 'done') {
       updatedTask = {
         ...updatedTask,
-        completed: true,
         status: 'done',
         completedAt: now,
         updatedAt: now
@@ -851,7 +1085,6 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
         ...updatedTask,
         scheduledForToday: false,
         todayScheduledAt: null,
-        completed: false,
         status: 'backlog',
         completedAt: null,
         updatedAt: now
@@ -859,11 +1092,32 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
     } else {
       updatedTask = {
         ...updatedTask,
-        completed: false, // Reset completion status for any other column
         status: 'inprogress',
-        completedAt: null, // Reset completion timestamp
+        completedAt: null,
         updatedAt: now
       }
+    }
+
+    // Save to database
+    const updateData = {
+      status: updatedTask.status,
+      scheduledForToday: updatedTask.scheduledForToday || false,
+      todayScheduledAt: updatedTask.todayScheduledAt,
+      completedAt: updatedTask.completedAt,
+      updatedAt: updatedTask.updatedAt,
+      weekNumber: updatedTask.weekNumber,
+      weekYear: updatedTask.weekYear,
+      assignedWeek: updatedTask.assignedWeek,
+      deadline: updatedTask.deadline,
+      orderInColumn: updatedTask.orderInColumn || 0
+    }
+
+    console.log('Drag & Drop: Moving task to', targetColumnId, 'with updateData:', updateData)
+
+    try {
+      await window.db.updateTask(task.id, updateData)
+    } catch (error) {
+      console.error('Failed to update task in database:', error)
     }
     
     return updatedTask
@@ -924,7 +1178,7 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt }) 
                 }}
               >
                 <div className="mx-auto flex h-full min-w-fit max-w-7xl gap-4 px-6 pb-4">
-                {columns.map((column) => (
+                {Array.isArray(columns) && columns.map((column) => (
                   <KanbanColumn
                     key={column.id}
                     column={column}

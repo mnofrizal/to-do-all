@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, MoreHorizontal, Clock, ExpandIcon, Edit, Copy, Archive } from 'lucide-react'
 import { Button } from './ui/button'
@@ -7,65 +7,50 @@ import { Badge } from './ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu'
+import useAppStore from '../stores/useAppStore'
 
 const HomePage = ({ onCardClick }) => {
-  const [lists, setLists] = useState([
-    {
-      id: 1,
-      name: 'All Lists',
-      icon: 'TK',
-      iconColor: 'bg-blue-500',
-      tasks: [
-        { id: 1, title: 'tes ajsa ini jalan kem...', time: '00:00', completed: false },
-        { id: 2, title: 'test To do 3', time: '21:10', completed: false },
-        { id: 3, title: 'jalan jalkan', time: '00:00', completed: false,},
-        { id: 4, title: 'jalan jalkan', time: '00:00', completed: false, isActive: true }
-      ],
-      pendingTasks: 3,
-      estimatedTime: '21hr 10min'
-    },
-    {
-      id: 2,
-      name: 'tes',
-      icon: 'T',
-      iconColor: 'bg-yellow-500',
-      tasks: [
-        { id: 4, title: 'tes ajsa ini jalan kem...', time: '00:00', completed: false }
-      ],
-      pendingTasks: 1,
-      estimatedTime: null
-    },
-    {
-      id: 3,
-      name: 'Kerja',
-      icon: 'K',
-      iconColor: 'bg-blue-600',
-      tasks: [
-        { id: 5, title: 'test To d...', time: '21:10', completed: false },
-        { id: 6, title: 'jalan jalkan', time: '00:00', completed: false }
-      ],
-      pendingTasks: 2,
-      estimatedTime: '21hr 10min'
-    }
-  ])
-
+  const [lists, setLists] = useState([])
   const [newListName, setNewListName] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  const handleCreateList = () => {
-    if (newListName.trim()) {
-      const newList = {
-        id: lists.length + 1,
-        name: newListName,
-        icon: newListName.charAt(0).toUpperCase(),
-        iconColor: 'bg-gray-500',
-        tasks: [],
-        pendingTasks: 0,
-        estimatedTime: null
+  // Get activeWorkspace from Zustand store
+  const { activeWorkspace } = useAppStore()
+
+  useEffect(() => {
+    if (activeWorkspace) {
+      const fetchLists = async () => {
+        try {
+          const fetchedLists = await window.db.getLists(activeWorkspace)
+          setLists(fetchedLists)
+        } catch (error) {
+          console.error('Failed to fetch lists for workspace:', activeWorkspace, error)
+          setLists([])
+        }
       }
-      setLists([...lists, newList])
-      setNewListName('')
-      setIsDialogOpen(false)
+      fetchLists()
+    } else {
+      setLists([])
+    }
+  }, [activeWorkspace])
+
+  const handleCreateList = async () => {
+    if (newListName.trim() && activeWorkspace) {
+      try {
+        const newListData = {
+          name: newListName,
+          icon: newListName.charAt(0).toUpperCase(),
+          iconColor: 'bg-gray-500',
+          workspaceId: activeWorkspace
+        }
+        const newList = await window.db.createList(newListData)
+        setLists([...lists, newList])
+        setNewListName('')
+        setIsDialogOpen(false)
+      } catch (error) {
+        console.error('Failed to create list:', error)
+        alert('Failed to create list. Please try again.')
+      }
     }
   }
 
@@ -122,9 +107,37 @@ const HomePage = ({ onCardClick }) => {
           <p className="text-muted-foreground">Lists with your upcoming tasks</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 4xl:grid-cols-5">
-        {/* Existing Lists */}
-        {lists.map((list, index) => (
+        {/* No Workspace Selected State */}
+        {!activeWorkspace ? (
+          <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/20 p-8 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <svg
+                className="h-8 w-8 text-muted-foreground"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-xl font-semibold text-foreground">No Workspace Selected</h3>
+            <p className="mb-6 max-w-md text-muted-foreground">
+              Please select a workspace from the sidebar to view and manage your task lists, or create a new workspace to get started.
+            </p>
+            <div className="text-sm text-muted-foreground">
+              💡 Tip: Use the sidebar to create or select a workspace
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 4xl:grid-cols-5">
+            {/* Existing Lists */}
+            {lists.map((list, index) => (
           <motion.div
             key={list.id}
             variants={cardVariants}
@@ -175,7 +188,7 @@ const HomePage = ({ onCardClick }) => {
                 <div className="p-6 pb-0 pt-4">
                   <div className="space-y-3">
                     {Array.from({ length: 4 }, (_, index) => {
-                      const task = list.tasks[index]
+                      const task = list.tasks ? list.tasks[index] : undefined;
                       return (
                         <div key={index} className={`flex items-center justify-between p-3 rounded-lg h-10 ${
                           task ? (task.isActive ? 'bg-primary/10 border border-primary/20' : 'dark:bg-[#222222] bg-white border border-border') : 'bg-transparent'
@@ -201,11 +214,11 @@ const HomePage = ({ onCardClick }) => {
                 </div>
                 
                 {/* Gradient Fade Effect */}
-                {list.tasks.length > 4 && (
+                {list.tasks && list.tasks.length > 4 && (
                   <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent"></div>
                 )}
                 {/* Hover Open Button Overlay */}
-                {list.tasks.some(task => task.isActive) && (
+                {list.tasks && list.tasks.some(task => task.isActive) && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <Button
                       className="rounded-full bg-primary px-6 text-primary-foreground shadow-xl hover:bg-primary/90"
@@ -225,7 +238,7 @@ const HomePage = ({ onCardClick }) => {
               <div className="p-6 pt-3">
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400">
-                    {list.pendingTasks} pending tasks
+                    {list.tasks ? list.tasks.filter(t => t.status !== 'done').length : 0} pending tasks
                   </span>
                   
                 </div>
@@ -281,7 +294,8 @@ const HomePage = ({ onCardClick }) => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

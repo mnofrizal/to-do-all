@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './components/Sidebar'
 import HomePage from './components/HomePage'
@@ -7,167 +7,252 @@ import TitleBar from './components/TitleBar'
 import TopNavbar from './components/TopNavbar'
 import FloatingTodayWindow from './components/FloatingTodayWindow'
 import FocusModeWindow from './components/FocusModeWindow'
+import Login from './components/Login'
 import { ThemeProvider } from './contexts/ThemeContext'
+import useAppStore from './stores/useAppStore'
+import useTimerStore from './stores/useTimerStore'
+import useTaskStore from './stores/useTaskStore'
 
 const App = () => {
-  const [activeMenu, setActiveMenu] = useState('home')
-  const [currentView, setCurrentView] = useState('home') // 'home' | 'taskProgress' | 'floating'
-  const [selectedList, setSelectedList] = useState(null)
-  const [activeTaskView, setActiveTaskView] = useState('kanban')
-  const [windowMode, setWindowMode] = useState('normal') // 'normal' | 'floating' | 'focus'
-  
-  // Shared timer state
-  const [activeTask, setActiveTask] = useState(null)
-  const [timer, setTimer] = useState({ hours: 0, minutes: 0, seconds: 0 })
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
-  
-  // Timer logic
+  // Zustand stores
+  const {
+    currentUser,
+    isAuthChecking,
+    activeMenu,
+    currentView,
+    windowMode,
+    activeWorkspace,
+    selectedList,
+    activeTaskView,
+    initializeAuth,
+    login,
+    logout,
+    setActiveMenu,
+    navigateToTaskProgress,
+    navigateToHome,
+    enterFloatingMode,
+    enterFocusMode,
+    exitSpecialModes,
+    setActiveTaskView,
+    setSelectedList,
+    fetchWorkspaceLists,
+    setActiveWorkspace
+  } = useAppStore()
+
+  const {
+    timer,
+    isRunning: isTimerRunning,
+    start: startTimer,
+    pause: pauseTimer,
+    toggle: toggleTimer,
+    reset: resetTimer,
+    cleanup: cleanupTimer,
+    switchToTask,
+    startForTask,
+    pauseForTask,
+    loadTaskTimer,
+    formatTaskTime,
+    periodicSave
+  } = useTimerStore()
+
+  const {
+    activeTask,
+    setActiveTask,
+    loadTasks
+  } = useTaskStore()
+
+  // Initialize auth on app start
   useEffect(() => {
-    let interval = null
-    if (isTimerRunning && activeTask) {
-      interval = setInterval(() => {
-        setTimer(prev => {
-          let newSeconds = prev.seconds + 1
-          let newMinutes = prev.minutes
-          let newHours = prev.hours
+    initializeAuth()
+  }, [initializeAuth])
 
-          if (newSeconds >= 60) {
-            newSeconds = 0
-            newMinutes += 1
-          }
-          if (newMinutes >= 60) {
-            newMinutes = 0
-            newHours += 1
-          }
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => cleanupTimer()
+  }, [cleanupTimer])
 
-          return { hours: newHours, minutes: newMinutes, seconds: newSeconds }
-        })
-      }, 1000)
+  // Periodic save timer data every 30 seconds
+  useEffect(() => {
+    if (isTimerRunning) {
+      const saveInterval = setInterval(() => {
+        periodicSave()
+      }, 30000) // Save every 30 seconds
+
+      return () => clearInterval(saveInterval)
     }
-    return () => clearInterval(interval)
-  }, [isTimerRunning, activeTask])
+  }, [isTimerRunning, periodicSave])
 
-  const handleToggleTimer = () => {
-    setIsTimerRunning(prev => !prev)
+  // Authentication handlers
+  const handleLogin = (user) => {
+    login(user)
   }
 
-  const handleActivateTask = (task) => {
+  const handleLogout = () => {
+    logout()
+    resetTimer()
+  }
+
+  const handleToggleTimer = async () => {
+    if (activeTask && currentUser) {
+      if (isTimerRunning) {
+        await pauseForTask()
+      } else {
+        await startForTask(activeTask.id, currentUser.id)
+      }
+    } else {
+      toggleTimer()
+    }
+  }
+
+  const handleActivateTask = async (task) => {
     setActiveTask(task)
-    setIsTimerRunning(true)
+    if (currentUser) {
+      await switchToTask(task.id, currentUser.id)
+      await startForTask(task.id, currentUser.id)
+    } else {
+      startTimer()
+    }
   }
 
-  const handleCompleteTask = (taskId) => {
+  const handleCompleteTask = async (taskId) => {
     // Stop timer when task is completed
-    setIsTimerRunning(false)
-    setActiveTask(null)
-    setTimer({ hours: 0, minutes: 0, seconds: 0 })
-    handleBackToNormal()
+    if (isTimerRunning) {
+      await pauseForTask()
+    }
+    
+    // Move to next task in floating or focus mode
+    if ((currentView === 'floating' || currentView === 'focus') && selectedList) {
+      try {
+        // Get today's tasks from database (incomplete only, excluding the just completed task)
+        const allTasks = await window.db.getTasks(selectedList.id)
+        const todayTasks = allTasks.filter(task =>
+          task.scheduledForToday === true && task.status !== 'done' && task.id !== taskId
+        )
+        
+        if (todayTasks.length > 0) {
+          const currentIndex = todayTasks.findIndex(task => task.id === activeTask?.id)
+          let nextIndex = currentIndex + 1
+          
+          // If current task was the completed one, start from beginning
+          if (currentIndex === -1) {
+            nextIndex = 0
+          }
+          
+          if (nextIndex < todayTasks.length) {
+            // Move to next task and switch timer
+            const nextTask = todayTasks[nextIndex]
+            setActiveTask(nextTask)
+            if (currentUser) {
+              await switchToTask(nextTask.id, currentUser.id)
+              await startForTask(nextTask.id, currentUser.id)
+            } else {
+              startTimer()
+            }
+          } else {
+            // No more tasks, deactivate
+            setActiveTask(null)
+          }
+        } else {
+          setActiveTask(null)
+        }
+      } catch (error) {
+        console.error('Failed to get tasks for completion:', error)
+        setActiveTask(null)
+      }
+    } else {
+      // In normal mode, go back to normal view
+      setActiveTask(null)
+      exitSpecialModes()
+    }
   }
 
-  const handleSkipTask = () => {
-    // Reset timer when skipping task
-    setTimer({ hours: 0, minutes: 0, seconds: 0 })
-    setIsTimerRunning(false)
-    setActiveTask(null)
+  const handleSkipTask = async () => {
+    // Pause current timer when skipping task
+    if (isTimerRunning) {
+      await pauseForTask()
+    }
+    
+    // Move to next task in floating or focus mode
+    if ((currentView === 'floating' || currentView === 'focus') && selectedList && activeTask) {
+      try {
+        // Get today's tasks from database (incomplete only)
+        const allTasks = await window.db.getTasks(selectedList.id)
+        const todayTasks = allTasks.filter(task =>
+          task.scheduledForToday === true && task.status !== 'done'
+        )
+        
+        if (todayTasks.length > 0) {
+          const currentIndex = todayTasks.findIndex(task => task.id === activeTask?.id)
+          const nextIndex = currentIndex + 1
+          
+          if (nextIndex < todayTasks.length) {
+            // Move to next task and switch timer
+            const nextTask = todayTasks[nextIndex]
+            setActiveTask(nextTask)
+            if (currentUser) {
+              await switchToTask(nextTask.id, currentUser.id)
+              await startForTask(nextTask.id, currentUser.id)
+            } else {
+              startTimer()
+            }
+          } else {
+            // No more tasks, deactivate
+            setActiveTask(null)
+          }
+        } else {
+          setActiveTask(null)
+        }
+      } catch (error) {
+        console.error('Failed to get tasks for skip:', error)
+        setActiveTask(null)
+      }
+    } else {
+      setActiveTask(null)
+    }
   }
 
   const handleCardClick = (list) => {
+    navigateToTaskProgress(list)
+  }
+
+  const handleListChange = (list) => {
     setSelectedList(list)
-    setCurrentView('taskProgress')
   }
 
-  const handleBackToHome = () => {
+  const handleBackToHome = async () => {
     if (windowMode === 'floating') {
-      handleBackToNormal()
+      // Auto-pause timer when exiting floating mode
+      if (isTimerRunning) {
+        await pauseForTask()
+      }
+      exitSpecialModes()
     } else {
-      setCurrentView('home')
-      setSelectedList(null)
+      navigateToHome()
     }
   }
 
-  const handleLeapIt = () => {
-    // Switch to floating mode
-    setCurrentView('floating')
-    setWindowMode('floating')
-    
-    // Request window resize to floating dimensions
-    if (window.api && window.api.windowControls && window.api.windowControls.resizeToFloating) {
-      window.api.windowControls.resizeToFloating()
+  const handleLeapIt = async () => {
+    // Auto-resume timer when entering floating mode if there's an active task
+    if (activeTask && !isTimerRunning && currentUser) {
+      await switchToTask(activeTask.id, currentUser.id)
+      await startForTask(activeTask.id, currentUser.id)
+    } else if (activeTask && !isTimerRunning) {
+      startTimer()
     }
-    
-    // Set always on top for floating mode
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('window-set-always-on-top', true)
-    }
+    enterFloatingMode()
   }
 
   const handleFocusMode = () => {
-    // Switch to focus mode
-    setCurrentView('focus')
-    setWindowMode('focus')
-    
-    // Request window resize to focus dimensions, disable resizing, and hide window controls
-    if (window.api && window.api.windowControls) {
-      if (window.api.windowControls.resizeToFocus) {
-        window.api.windowControls.resizeToFocus()
-      }
-      if (window.api.windowControls.setResizable) {
-        window.api.windowControls.setResizable(false)
-      }
-      if (window.api.windowControls.hideWindowControls) {
-        window.api.windowControls.hideWindowControls()
-      }
-    }
-    // Set always on top
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('window-set-always-on-top', true)
-    }
+    enterFocusMode()
   }
 
   const handleBackToFloating = () => {
     // Switch back to floating mode
-    setCurrentView('floating')
-    setWindowMode('floating')
-    
-    // Request window resize to floating dimensions, re-enable resizing, and show window controls
-    if (window.api && window.api.windowControls) {
-      if (window.api.windowControls.setResizable) {
-        window.api.windowControls.setResizable(true)
-      }
-      if (window.api.windowControls.showWindowControls) {
-        window.api.windowControls.showWindowControls()
-      }
-      if (window.api.windowControls.resizeToFloating) {
-        window.api.windowControls.resizeToFloating()
-      }
-    }
-    // Remove always on top
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('window-set-always-on-top', false)
-    }
+    enterFloatingMode()
   }
 
   const handleBackToNormal = () => {
-    // Switch back to normal mode
-    setCurrentView('taskProgress')
-    setWindowMode('normal')
-    
-    // Request window resize to normal dimensions, re-enable resizing, and show window controls
-    if (window.api && window.api.windowControls) {
-      if (window.api.windowControls.setResizable) {
-        window.api.windowControls.setResizable(true)
-      }
-      if (window.api.windowControls.showWindowControls) {
-        window.api.windowControls.showWindowControls()
-      }
-      if (window.api.windowControls.resizeToNormal) {
-        window.api.windowControls.resizeToNormal()
-      }
-    }
-    // Remove always on top
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('window-set-always-on-top', false)
-    }
+    exitSpecialModes()
   }
 
   const handleTaskClick = (task) => {
@@ -211,6 +296,21 @@ const App = () => {
               // Handle notes toggling
               console.log('Toggle notes for task:', taskId)
             }}
+            selectedList={selectedList}
+            onTaskUpdate={(updatedColumns) => {
+              // Update the selectedList with new task data
+              if (selectedList) {
+                const allTasks = [
+                  ...(updatedColumns.today || []),
+                  ...(updatedColumns.thisWeek || []),
+                  ...(updatedColumns.done || [])
+                ]
+                setSelectedList({
+                  ...selectedList,
+                  tasks: allTasks
+                })
+              }
+            }}
           />
         </motion.div>
       )
@@ -230,8 +330,9 @@ const App = () => {
           className="h-full"
         >
           <FloatingTodayWindow
-            onClose={handleBackToNormal}
+            onClose={handleBackToHome}
             onFocusMode={handleFocusMode}
+            selectedList={selectedList}
             todayTasks={todayTasks}
             activeTask={activeTask}
             timer={timer}
@@ -240,6 +341,20 @@ const App = () => {
             onToggleTimer={handleToggleTimer}
             onCompleteTask={handleCompleteTask}
             onSkipTask={handleSkipTask}
+            onTaskUpdate={(updatedColumns) => {
+              // Update the selectedList with new task data
+              if (selectedList) {
+                const allTasks = [
+                  ...(updatedColumns.today || []),
+                  ...(updatedColumns.thisWeek || []),
+                  ...(updatedColumns.done || [])
+                ]
+                setSelectedList({
+                  ...selectedList,
+                  tasks: allTasks
+                })
+              }
+            }}
           />
         </motion.div>
       )
@@ -279,7 +394,7 @@ const App = () => {
             variants={pageVariants}
             transition={pageTransition}
           >
-            <HomePage onCardClick={handleCardClick} />
+            <HomePage onCardClick={handleCardClick} activeWorkspace={activeWorkspace} />
           </motion.div>
         )
       case 'tasks':
@@ -352,12 +467,36 @@ const App = () => {
             variants={pageVariants}
             transition={pageTransition}
           >
-            <HomePage onCardClick={handleCardClick} />
+            <HomePage onCardClick={handleCardClick} activeWorkspace={activeWorkspace} />
           </motion.div>
         )
     }
   }
 
+  // Show loading screen while checking authentication
+  if (isAuthChecking) {
+    return (
+      <ThemeProvider>
+        <div className="flex h-screen items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="mb-4 text-3xl font-bold text-primary">TaskLeap</div>
+            <div className="text-muted-foreground">Loading...</div>
+          </div>
+        </div>
+      </ThemeProvider>
+    )
+  }
+
+  // Show login screen if user is not authenticated
+  if (!currentUser) {
+    return (
+      <ThemeProvider>
+        <Login onLogin={handleLogin} />
+      </ThemeProvider>
+    )
+  }
+
+  // Show main app if user is authenticated
   return (
     <ThemeProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -372,6 +511,10 @@ const App = () => {
                 key="sidebar"
                 activeMenu={activeMenu}
                 setActiveMenu={setActiveMenu}
+                activeWorkspace={activeWorkspace}
+                setActiveWorkspace={setActiveWorkspace}
+                currentUser={currentUser}
+                onLogout={handleLogout}
               />
             )}
           </AnimatePresence>
@@ -398,6 +541,10 @@ const App = () => {
                 selectedList={selectedList}
                 activeTaskView={activeTaskView}
                 setActiveTaskView={setActiveTaskView}
+                currentUser={currentUser}
+                onLogout={handleLogout}
+                onListChange={handleListChange}
+                activeWorkspace={activeWorkspace}
               />
             )}
             

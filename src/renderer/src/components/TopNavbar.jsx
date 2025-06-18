@@ -1,17 +1,38 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List } from 'lucide-react'
+import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List, User, LogOut } from 'lucide-react'
 import { Button } from './ui/button'
 import { Switch } from './ui/switch.jsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogOverlay } from './ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useTheme } from '../contexts/ThemeContext'
+import useAppStore from '../stores/useAppStore'
 
-const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskView, setActiveTaskView }) => {
+const TopNavbar = ({ onBack, onListChange }) => {
   const { theme, colorTheme, setThemeMode, setColorThemeMode, availableColorThemes } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [currentTheme, setCurrentTheme] = useState('light')
   const [language, setLanguage] = useState('english')
   const [hideEstDoneTimes, setHideEstDoneTimes] = useState(true)
+
+  // Get state from Zustand stores
+  const {
+    currentView,
+    activeMenu,
+    selectedList,
+    activeTaskView,
+    setActiveTaskView,
+    currentUser,
+    activeWorkspace,
+    workspaceLists,
+    fetchWorkspaceLists,
+    logout
+  } = useAppStore()
+
+  // Create onLogout handler
+  const handleLogout = () => {
+    logout()
+  }
 
   const taskViewOptions = [
     { id: 'kanban', label: 'Kanban', icon: Kanban },
@@ -52,6 +73,25 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
     console.log('Hide est/done times:', !hideEstDoneTimes)
   }
 
+  // Fetch lists for the current workspace
+  useEffect(() => {
+    fetchWorkspaceLists(activeWorkspace)
+  }, [activeWorkspace, fetchWorkspaceLists])
+
+  const handleListSelect = (list) => {
+    if (onListChange) {
+      onListChange(list)
+    }
+  }
+
+  const getIconInitials = (name) => {
+    const words = name.split(' ')
+    if (words.length >= 2) {
+      return words[0].charAt(0).toUpperCase() + words[1].charAt(0).toUpperCase()
+    }
+    return name.charAt(0).toUpperCase()
+  }
+
   const renderLeftContent = () => {
     if (currentView === 'taskProgress') {
       return (
@@ -66,26 +106,83 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
             <span className="font-medium">BACK</span>
           </Button>
           
-          {/* List selector */}
-          <div className="flex items-center space-x-2 rounded-lg border border-border bg-card px-3 py-2">
-            <div className="flex items-center space-x-1">
-              <div className="flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-purple-500 text-xs font-bold text-white">
-                  T
+          {/* List selector dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div className="flex cursor-pointer items-center space-x-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:bg-accent">
+                <div className="flex items-center space-x-1">
+                  <div className="flex items-center">
+                    {workspaceLists.length > 0 ? (
+                      <>
+                        {workspaceLists.slice(0, 2).map((list, index) => (
+                          <div
+                            key={list.id}
+                            className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white ${
+                              list.iconColor || 'bg-gray-500'
+                            } ${index > 0 ? '-ml-2' : ''}`}
+                          >
+                            {list.icon || getIconInitials(list.name)}
+                          </div>
+                        ))}
+                        {workspaceLists.length > 2 && (
+                          <div className="-ml-2 flex h-6 w-6 items-center justify-center rounded bg-zinc-600 text-xs font-bold text-white">
+                            +{workspaceLists.length - 2}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex h-6 w-6 items-center justify-center rounded bg-gray-500 text-xs font-bold text-white">
+                        ?
+                      </div>
+                    )}
+                  </div>
+                  <span className="ml-2 font-semibold text-foreground">
+                    {selectedList ? selectedList.name : 'Select List'}
+                  </span>
                 </div>
-                <div className="-ml-2 flex h-6 w-6 items-center justify-center rounded bg-yellow-500 text-xs font-bold text-white">
-                  P
-                </div>
-                <div className="-ml-2 flex h-6 w-6 items-center justify-center rounded bg-zinc-600 text-xs font-bold text-white">
-                  +2
-                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </div>
-              <span className="ml-2 font-semibold text-foreground">
-                {selectedList ? selectedList.name : 'All Lists'}
-              </span>
-            </div>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <div className="px-2 py-1.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Lists in this workspace
+                </p>
+              </div>
+              <DropdownMenuSeparator />
+              {workspaceLists.length > 0 ? (
+                workspaceLists.map((list) => (
+                  <DropdownMenuItem
+                    key={list.id}
+                    onClick={() => handleListSelect(list)}
+                    className={`flex items-center space-x-3 px-3 py-2 ${
+                      selectedList?.id === list.id ? 'bg-accent' : ''
+                    }`}
+                  >
+                    <div className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white ${
+                      list.iconColor || 'bg-gray-500'
+                    }`}>
+                      {list.icon || getIconInitials(list.name)}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-foreground">{list.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {/* You can add task count here if needed */}
+                        List
+                      </div>
+                    </div>
+                    {selectedList?.id === list.id && (
+                      <div className="h-2 w-2 rounded-full bg-primary"></div>
+                    )}
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled className="px-3 py-2 text-muted-foreground">
+                  No lists in this workspace
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )
     }
@@ -95,7 +192,7 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
       switch (activeMenu) {
         case 'home':
           return {
-            title: 'Good Evening, Amrizal',
+            title: `Good Evening, ${currentUser?.name || currentUser?.username || 'User'}`,
             subtitle: 'Nice! Blitzing through your evening!'
           }
         case 'tasks':
@@ -115,7 +212,7 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
           }
         default:
           return {
-            title: 'Good Evening, Amrizal',
+            title: `Good Evening, ${currentUser?.name || currentUser?.username || 'User'}`,
             subtitle: 'Nice! Blitzing through your evening!'
           }
       }
@@ -210,12 +307,37 @@ const TopNavbar = ({ currentView, activeMenu, onBack, selectedList, activeTaskVi
         </Button>
 
         {/* User Profile Dropdown */}
-        <Button variant="ghost" className="flex h-9 items-center space-x-1 px-3 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
-            A
-          </div>
-          <ChevronDown className="h-4 w-4" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="flex h-9 items-center space-x-1 px-3 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+              {currentUser?.avatar ? (
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name || currentUser.username}
+                  className="h-6 w-6 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+                  {currentUser?.name?.charAt(0) || currentUser?.username?.charAt(0) || 'U'}
+                </div>
+              )}
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium">{currentUser?.name || currentUser?.username}</p>
+              {currentUser?.email && (
+                <p className="text-xs text-muted-foreground">{currentUser.email}</p>
+              )}
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Settings Dialog */}

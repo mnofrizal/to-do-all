@@ -86,7 +86,7 @@ const TaskCard = ({
       {...listeners}
       key={task.id}
       className={`rounded-lg border border-zinc-300 dark:border-zinc-800 dark:bg-[#262626] p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors relative ${
-        task.completed ? 'opacity-75' : ''
+        task.status === 'done' ? 'opacity-75' : ''
       } ${isDragging ? 'opacity-50' : ''}`}
       onMouseEnter={() => setHoveredTask(task.id)}
       onMouseLeave={() => setHoveredTask(null)}
@@ -157,7 +157,7 @@ const TaskCard = ({
               onPointerDown={(e) => e.stopPropagation()}
               onFocus={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              className={`flex-1 bg-white rounded px-2 py-1 text-sm font-light border-none outline-none focus:outline-none focus:ring-0 ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+              className={`flex-1 bg-white rounded px-2 py-1 text-sm font-light border-none outline-none focus:outline-none focus:ring-0 ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}
               placeholder="Add task title here"
               animate={{
                 x: hoveredTask === task.id ? 24 : 0
@@ -167,7 +167,7 @@ const TaskCard = ({
             />
           ) : (
             <motion.span
-              className={`font-light text-sm truncate cursor-pointer ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+              className={`font-light text-sm truncate cursor-pointer ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}
               animate={{
                 x: hoveredTask === task.id ? 24 : 0
               }}
@@ -324,11 +324,13 @@ const TaskCard = ({
                   title={`Priority: ${task.priority}`}
                 />
                 {/* Task Group Badge */}
-                <div
-                  className={`${task.taskGroup.color} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
-                >
-                  {task.taskGroup.name}
-                </div>
+                {task.taskGroup && (
+                  <div
+                    className={`${task.taskGroup.color} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
+                  >
+                    {task.taskGroup.name}
+                  </div>
+                )}
               </div>
             )}
           </AnimatePresence>

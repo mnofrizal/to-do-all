@@ -40,6 +40,37 @@ if (process.contextIsolated) {
       }
     })
     contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('db', {
+      // User authentication
+      createUser: (userData) => ipcRenderer.invoke('create-user', userData),
+      getUserByUsername: (username) => ipcRenderer.invoke('get-user-by-username', username),
+      getUserByEmail: (email) => ipcRenderer.invoke('get-user-by-email', email),
+      updateUser: (id, data) => ipcRenderer.invoke('update-user', { id, data }),
+      // Workspace operations
+      getWorkspaces: (userId) => ipcRenderer.invoke('get-workspaces', userId),
+      createWorkspace: (name, userId) => ipcRenderer.invoke('create-workspace', { name, userId }),
+      updateWorkspace: (id, data) => ipcRenderer.invoke('update-workspace', { id, data }),
+      deleteWorkspace: (id) => ipcRenderer.invoke('delete-workspace', id),
+      getLists: (workspaceId) => ipcRenderer.invoke('get-lists', workspaceId),
+      createList: (data) => ipcRenderer.invoke('create-list', data),
+      getTasks: (listId) => ipcRenderer.invoke('get-tasks', listId),
+      createTask: (data) => ipcRenderer.invoke('create-task', data),
+      updateTask: (id, data) => ipcRenderer.invoke('update-task', { id, data }),
+      deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
+      createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
+      updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
+      deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
+      // TimeSession operations
+      createTimeSession: (data) => ipcRenderer.invoke('create-time-session', data),
+      updateTimeSession: (id, data) => ipcRenderer.invoke('update-time-session', { id, data }),
+      endTimeSession: (id, endTime, duration) => ipcRenderer.invoke('end-time-session', { id, endTime, duration }),
+      getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+      getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
+      getActiveTimeSession: (taskId, userId) => ipcRenderer.invoke('get-active-time-session', { taskId, userId }),
+      deleteTimeSession: (id) => ipcRenderer.invoke('delete-time-session', id),
+      clearTaskTimeSessions: (taskId) => ipcRenderer.invoke('clear-task-time-sessions', taskId),
+      getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId)
+    })
   } catch (error) {
     console.error(error)
   }
@@ -53,4 +84,35 @@ if (process.contextIsolated) {
     }
   }
   window.api = api
+  window.db = {
+    // User authentication
+    createUser: (userData) => ipcRenderer.invoke('create-user', userData),
+    getUserByUsername: (username) => ipcRenderer.invoke('get-user-by-username', username),
+    getUserByEmail: (email) => ipcRenderer.invoke('get-user-by-email', email),
+    updateUser: (id, data) => ipcRenderer.invoke('update-user', { id, data }),
+    // Workspace operations
+    getWorkspaces: (userId) => ipcRenderer.invoke('get-workspaces', userId),
+    createWorkspace: (name, userId) => ipcRenderer.invoke('create-workspace', { name, userId }),
+    updateWorkspace: (id, data) => ipcRenderer.invoke('update-workspace', { id, data }),
+    deleteWorkspace: (id) => ipcRenderer.invoke('delete-workspace', id),
+    getLists: (workspaceId) => ipcRenderer.invoke('get-lists', workspaceId),
+    createList: (data) => ipcRenderer.invoke('create-list', data),
+    getTasks: (listId) => ipcRenderer.invoke('get-tasks', listId),
+    createTask: (data) => ipcRenderer.invoke('create-task', data),
+    updateTask: (id, data) => ipcRenderer.invoke('update-task', { id, data }),
+    deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
+    createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
+    updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
+    deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
+    // TimeSession operations
+    createTimeSession: (data) => ipcRenderer.invoke('create-time-session', data),
+    updateTimeSession: (id, data) => ipcRenderer.invoke('update-time-session', { id, data }),
+    endTimeSession: (id, endTime, duration) => ipcRenderer.invoke('end-time-session', { id, endTime, duration }),
+    getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+    getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
+    getActiveTimeSession: (taskId, userId) => ipcRenderer.invoke('get-active-time-session', { taskId, userId }),
+    deleteTimeSession: (id) => ipcRenderer.invoke('delete-time-session', id),
+    clearTaskTimeSessions: (taskId) => ipcRenderer.invoke('clear-task-time-sessions', taskId),
+    getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId)
+  }
 }

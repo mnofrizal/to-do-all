@@ -1,24 +1,27 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Play, 
-  Pause, 
-  SkipForward, 
-  Target, 
-  Menu, 
-  FileText, 
-  MoreVertical, 
-  CheckCircle2, 
-  ChevronDown, 
-  ChevronUp, 
-  X, 
-  ArrowUp, 
-  ArrowDown, 
+import {
+  Play,
+  Pause,
+  SkipForward,
+  Target,
+  Menu,
+  FileText,
+  MoreVertical,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  X,
+  ArrowUp,
+  ArrowDown,
   Trash2,
   Save
 } from 'lucide-react'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import useTimerStore from '../stores/useTimerStore'
+import useTaskStore from '../stores/useTaskStore'
+import useAppStore from '../stores/useAppStore'
 
 const FloatingTaskCard = ({
   task,
@@ -73,6 +76,20 @@ const FloatingTaskCard = ({
   const [hoveredTask, setHoveredTask] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
+  // Reset hover state when task becomes inactive OR active
+  React.useEffect(() => {
+    if (!isActive) {
+      setHoveredTask(false)
+    }
+  }, [isActive])
+
+  // Also reset hover state when task becomes active
+  React.useEffect(() => {
+    if (isActive) {
+      setHoveredTask(false)
+    }
+  }, [isActive])
+
   const handleToggleSubtasks = () => {
     setExpandedSubtasks(prev => ({
       ...prev,
@@ -99,20 +116,31 @@ const FloatingTaskCard = ({
     setEditingSubtaskValue(title)
   }
 
+  // Get timer state from Zustand
+  const { formatTime, isRunning, switchToTask, startForTask, pauseForTask, formatTaskTime } = useTimerStore()
+  const { activeTask: storeActiveTask } = useTaskStore()
+  const { currentUser } = useAppStore()
+
   // Format timer for display - only for active task
   const formatTimer = () => {
     if (isActive) {
-      const timer = onGetCurrentTimer ? onGetCurrentTimer() : { hours: 0, minutes: 0, seconds: 0 }
-      return `${timer.hours.toString().padStart(2, '0')}:${timer.minutes.toString().padStart(2, '0')}:${timer.seconds.toString().padStart(2, '0')}`
+      if (!isTimerRunning) {
+        return "PAUSED"
+      }
+      return formatTime()
     }
     return null
   }
 
+  const isCompleted = task.status === 'done'
+  
   return (
     <motion.div
       className={`rounded-lg cursor-pointer transition-all relative p-3 shadow-sm ${
-        isActive
-          ? 'bg-card dark:bg-[#262626]'
+        isCompleted
+          ? 'border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#262626]'
+          : isActive
+          ? 'bg-card bg-white  dark:bg-[#262626]'
           : 'border border-zinc-300 dark:border-zinc-800 bg-card dark:bg-[#262626] hover:bg-accent'
       }`}
       style={isActive ? {
@@ -143,15 +171,7 @@ const FloatingTaskCard = ({
                 className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white px-2 py-1 dark:bg-[#262626]"
               >
                 <div className="flex items-center justify-center gap-1">
-                  <ControlButton
-                    icon={isTimerRunning ? Pause : Play}
-                    label={isTimerRunning ? "Pause" : "Play"}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onToggleTimer()
-                    }}
-                    size="sm"
-                  />
+                  
                   
                   <ControlButton
                     icon={FileText}
@@ -173,6 +193,16 @@ const FloatingTaskCard = ({
                       } else {
                         handleShowSubtaskInput()
                       }
+                    }}
+                    size="sm"
+                  />
+
+<ControlButton
+                    icon={isTimerRunning ? Pause : Play}
+                    label={isTimerRunning ? "Pause" : "Play"}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleTimer()
                     }}
                     size="sm"
                   />
@@ -230,10 +260,14 @@ const FloatingTaskCard = ({
                 />
               ) : (
                 <span
-                  className="cursor-pointer truncate text-lg font-semibold text-foreground"
+                  className={`cursor-pointer truncate text-lg font-semibold ${
+                    isCompleted
+                      ? 'line-through'
+                      : 'text-foreground'
+                  }`}
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleEditTask(task.id, task.title)
+                    if (!isCompleted) handleEditTask(task.id, task.title)
                   }}
                 >
                   {task.title}
@@ -251,26 +285,32 @@ const FloatingTaskCard = ({
       {!isActive && (
         <div className="flex items-start justify-between gap-2">
           <div className="relative flex min-w-0 flex-1 items-start gap-2">
-            {/* Checklist button */}
-            <AnimatePresence>
-              {hoveredTask && (
-                <motion.button
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onCompleteTask(task.id)
-                  }}
-                  className="absolute z-10 mt-0.5 text-muted-foreground transition-colors hover:text-green-600"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <CheckCircle2 size={16} strokeWidth={2} fill="none" />
-                </motion.button>
-              )}
-            </AnimatePresence>
+            {/* Checklist button or completion indicator */}
+            {isCompleted ? (
+              <div className="mt-0.5 text-green-600">
+                <CheckCircle2 size={16} strokeWidth={2} fill="none" />
+              </div>
+            ) : (
+              <AnimatePresence>
+                {hoveredTask && (
+                  <motion.button
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCompleteTask(task.id)
+                    }}
+                    className="absolute z-10 mt-0.5 text-muted-foreground transition-colors hover:text-green-600"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <CheckCircle2 size={16} strokeWidth={2} fill="none" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            )}
             
             {/* Title with smooth slide animation */}
             {editingTask === task.id ? (
@@ -302,14 +342,18 @@ const FloatingTaskCard = ({
               />
             ) : (
               <motion.span
-                className="cursor-pointer truncate text-sm font-light text-foreground"
+                className={`cursor-pointer truncate text-sm font-light ${
+                  isCompleted
+                    ? 'line-through'
+                    : 'text-foreground'
+                }`}
                 animate={{
-                  x: hoveredTask ? 24 : 0
+                  x: isCompleted ? 0 : (hoveredTask ? 24 : 0)
                 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
                 onClick={(e) => {
                   e.stopPropagation()
-                  handleEditTask(task.id, task.title)
+                  if (!isCompleted) handleEditTask(task.id, task.title)
                 }}
               >
                 {task.title}
@@ -354,17 +398,23 @@ const FloatingTaskCard = ({
                   >
                     <FileText size={16} />
                   </motion.button>
-                  <motion.button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onActivateTask(task.id)
-                    }}
-                    className="text-muted-foreground transition-colors hover:text-foreground"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Target size={16} />
-                  </motion.button>
+                  {!isCompleted && (
+                    <motion.button
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        // Switch to this task's timer when activating
+                        if (currentUser) {
+                          await switchToTask(task.id, currentUser.id)
+                        }
+                        onActivateTask(task.id)
+                      }}
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Target size={16} />
+                    </motion.button>
+                  )}
                   <DropdownMenu
                     onOpenChange={(open) => {
                       setDropdownOpen(open)

@@ -1,0 +1,102 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  username  String   @unique
+  password  String
+  name      String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaces   Workspace[]
+  timeSessions TimeSession[]
+}
+
+model Workspace {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lists     List[]
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+}
+
+model List {
+  id          Int       @id @default(autoincrement())
+  name        String
+  icon        String
+  iconColor   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tasks       Task[]
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  workspaceId Int
+}
+
+model Task {
+  id            Int     @id @default(autoincrement())
+  title         String
+  status        String  @default("inprogress")
+  priority      String  @default("medium")
+  notes         String?
+  timeSpent     Int     @default(0)
+  estimatedTime Int     @default(60)
+  orderInColumn Int     @default(0)
+  weekNumber    Int?
+  weekYear      Int?
+
+  deadline          DateTime?
+  assignedWeek      String?
+  scheduledForToday Boolean   @default(false)
+  todayScheduledAt  DateTime?
+  list              List      @relation(fields: [listId], references: [id])
+  listId            Int
+
+  subtasks     Subtask[]
+  timeSessions TimeSession[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+}
+
+model Subtask {
+  id        Int      @id @default(autoincrement())
+  title     String
+  completed Boolean  @default(false)
+  order     Int      @default(0)
+  taskId    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TimeSession {
+  id        String    @id @default(cuid())
+  startTime DateTime  @default(now())
+  endTime   DateTime?
+  duration  Int? // duration in seconds (calculated when session ends)
+
+  taskId Int
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

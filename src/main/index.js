@@ -1,6 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'path'
+import { PrismaClient } from '@prisma/client'
 import icon from '../../resources/icon.png?asset'
+
+const prisma = new PrismaClient()
 
 // Simple development check
 const isDev = !app.isPackaged
@@ -8,6 +11,170 @@ const isDev = !app.isPackaged
 let mainWindow = null
 let cursorTracker = null
 let focusModePosition = null // Store focus mode position
+
+// IPC handlers for database operations
+
+// User authentication handlers
+ipcMain.handle('create-user', async (_, userData) => {
+  return await prisma.user.create({ data: userData })
+})
+
+ipcMain.handle('get-user-by-username', async (_, username) => {
+  return await prisma.user.findUnique({ where: { username } })
+})
+
+ipcMain.handle('get-user-by-email', async (_, email) => {
+  return await prisma.user.findUnique({ where: { email } })
+})
+
+ipcMain.handle('update-user', async (_, { id, data }) => {
+  return await prisma.user.update({ where: { id }, data })
+})
+
+// Workspace handlers
+ipcMain.handle('get-workspaces', async (_, userId) => {
+  return await prisma.workspace.findMany({
+    where: { userId },
+    include: { lists: true }
+  })
+})
+
+ipcMain.handle('create-workspace', async (_, { name, userId }) => {
+  return await prisma.workspace.create({
+    data: { name, userId },
+    include: { lists: true }
+  })
+})
+
+ipcMain.handle('update-workspace', async (_, { id, data }) => {
+  return await prisma.workspace.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-workspace', async (_, id) => {
+  // Delete workspace and all related data (cascading delete)
+  return await prisma.workspace.delete({ where: { id } })
+})
+
+ipcMain.handle('get-lists', async (_, workspaceId) => {
+  return await prisma.list.findMany({ where: { workspaceId } })
+})
+
+ipcMain.handle('create-list', async (_, data) => {
+  return await prisma.list.create({ data })
+})
+
+ipcMain.handle('get-tasks', async (_, listId) => {
+  return await prisma.task.findMany({ where: { listId }, include: { subtasks: true } })
+})
+
+ipcMain.handle('create-task', async (_, data) => {
+  return await prisma.task.create({ data })
+})
+
+ipcMain.handle('update-task', async (_, { id, data }) => {
+  return await prisma.task.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-task', async (_, id) => {
+  return await prisma.task.delete({ where: { id } })
+})
+
+ipcMain.handle('create-subtask', async (_, data) => {
+  return await prisma.subtask.create({ data })
+})
+
+ipcMain.handle('update-subtask', async (_, { id, data }) => {
+  return await prisma.subtask.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-subtask', async (_, id) => {
+  return await prisma.subtask.delete({ where: { id } })
+})
+
+// TimeSession handlers
+ipcMain.handle('create-time-session', async (_, data) => {
+  return await prisma.timeSession.create({ data })
+})
+
+ipcMain.handle('update-time-session', async (_, { id, data }) => {
+  return await prisma.timeSession.update({ where: { id }, data })
+})
+
+ipcMain.handle('end-time-session', async (_, { id, endTime, duration }) => {
+  return await prisma.timeSession.update({
+    where: { id },
+    data: { endTime, duration }
+  })
+})
+
+ipcMain.handle('get-task-time-sessions', async (_, taskId) => {
+  return await prisma.timeSession.findMany({
+    where: { taskId },
+    orderBy: { createdAt: 'desc' }
+  })
+})
+
+ipcMain.handle('get-task-total-time', async (_, taskId) => {
+  try {
+    const sessions = await prisma.timeSession.findMany({
+      where: {
+        taskId,
+        duration: { not: null }, // Only completed sessions
+        endTime: { not: null }   // Only properly ended sessions
+      },
+      select: { duration: true }
+    })
+    
+    const totalSeconds = sessions.reduce((total, session) => {
+      return total + (session.duration || 0)
+    }, 0)
+    
+    return totalSeconds
+  } catch (error) {
+    console.error('Error getting task total time:', error)
+    return 0
+  }
+})
+
+ipcMain.handle('get-active-time-session', async (_, { taskId, userId }) => {
+  return await prisma.timeSession.findFirst({
+    where: {
+      taskId,
+      userId,
+      endTime: null // Active session has no end time
+    },
+    orderBy: { createdAt: 'desc' }
+  })
+})
+
+ipcMain.handle('delete-time-session', async (_, id) => {
+  return await prisma.timeSession.delete({ where: { id } })
+})
+
+ipcMain.handle('clear-task-time-sessions', async (_, taskId) => {
+  try {
+    const result = await prisma.timeSession.deleteMany({
+      where: { taskId }
+    })
+    return result
+  } catch (error) {
+    console.error('Error clearing task sessions:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('get-all-task-sessions', async (_, taskId) => {
+  try {
+    const sessions = await prisma.timeSession.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'desc' }
+    })
+    return sessions
+  } catch (error) {
+    console.error('Error getting all task sessions:', error)
+    return []
+  }
+})
 
 function createWindow() {
   // Create the browser window.

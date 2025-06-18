@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   GripVertical,
   Minus,
@@ -9,12 +9,15 @@ import {
   Play,
   SkipForward,
   CheckCircle,
+  CheckCircle2,
   Expand,
-  Maximize2
+  Maximize2,
+  Coffee
 } from 'lucide-react'
+import { Button } from './ui/button'
 
-const FocusModeWindow = ({ 
-  onBack, 
+const FocusModeWindow = ({
+  onBack,
   onDone,
   activeTask,
   timer,
@@ -22,9 +25,19 @@ const FocusModeWindow = ({
   onToggleTimer,
   onCompleteTask,
   onSkipTask,
-  onToggleNotes
+  onToggleNotes,
+  // Add database integration props
+  selectedList,
+  onTaskUpdate,
+  taskColumns,
+  setTaskColumns
 }) => {
   const [isHovered, setIsHovered] = useState(false)
+  
+  // Completion celebration modal state
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
+  const [completedTaskTitle, setCompletedTaskTitle] = useState('')
+  const [taskCompletionTime, setTaskCompletionTime] = useState(0)
 
   // Cursor tracking effect
   useEffect(() => {
@@ -74,10 +87,123 @@ const FocusModeWindow = ({
     }
   }
 
-  const handleComplete = () => {
-    if (activeTask && onCompleteTask) {
-      onCompleteTask(activeTask.id)
+  // Database completion functions (same as FloatingTodayWindow)
+  const handleCompleteTask = async () => {
+    if (!activeTask) return
+
+    try {
+      // If task is already completed, just toggle it back
+      if (activeTask.status === 'done') {
+        await completeTaskDirectly(activeTask.id)
+        return
+      }
+
+      // Show completion celebration modal
+      setCompletedTaskTitle(activeTask.title)
+      setTaskCompletionTime(timer?.hours * 60 + timer?.minutes || 0)
+      setShowCompletionModal(true)
+    } catch (error) {
+      console.error('Failed to complete task:', error)
     }
+  }
+
+  // Function to actually complete the task (called from modal)
+  const completeTaskDirectly = async (taskId) => {
+    try {
+      const now = new Date().toISOString()
+      const isCompleted = activeTask.status === 'done'
+      const status = isCompleted ? 'inprogress' : 'done'
+      const completedAt = isCompleted ? null : now
+
+      // Update database
+      await window.db.updateTask(taskId, { status, completedAt, updatedAt: now })
+
+      // Update parent state if available
+      if (taskColumns && setTaskColumns && onTaskUpdate) {
+        const updatedColumns = taskColumns.map(col => {
+          if (col.tasks.some(t => t.id === taskId)) {
+            return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
+          }
+          if (col.id === status) {
+            return {
+              ...col,
+              tasks: [...col.tasks, {
+                ...activeTask,
+                status,
+                completedAt,
+                updatedAt: now
+              }]
+            }
+          }
+          return col
+        })
+        
+        setTaskColumns(updatedColumns)
+        onTaskUpdate(updatedColumns)
+      }
+
+      // If task was completed (not uncompleted), call parent's completion handler
+      if (!isCompleted) {
+        onCompleteTask(taskId)
+      }
+    } catch (error) {
+      console.error('Failed to complete task:', error)
+    }
+  }
+
+  // Handle next task from completion modal
+  const handleNextTask = () => {
+    setShowCompletionModal(false)
+    // Complete the current task and move to next
+    if (activeTask) {
+      completeTaskDirectly(activeTask.id)
+    }
+  }
+
+  // Handle take a break from completion modal
+  const handleTakeBreak = () => {
+    setShowCompletionModal(false)
+    // Complete the current task but don't move to next
+    if (activeTask) {
+      completeTaskDirectly(activeTask.id)
+      // Stop timer and deactivate task
+      onSkipTask()
+    }
+  }
+
+  // Enhanced skip function
+  const handleSkipTask = async () => {
+    if (!activeTask || !selectedList) {
+      onSkipTask() // Call parent's skip handler to reset timer and move to next
+      return
+    }
+    
+    try {
+      // Move the skipped task to the bottom of the today list by updating its orderInColumn
+      // Get all tasks from database to find the current max order
+      const allTasks = await window.db.getTasks(selectedList.id)
+      const todayTasks = allTasks.filter(task => task.scheduledForToday === true && task.status !== 'done')
+      
+      if (todayTasks.length > 0) {
+        // Find the highest orderInColumn value in today's tasks
+        const maxOrder = Math.max(...todayTasks.map(t => t.orderInColumn || 0), 0)
+        
+        // Update the skipped task's orderInColumn to be at the bottom
+        await window.db.updateTask(activeTask.id, {
+          orderInColumn: maxOrder + 1,
+          updatedAt: new Date().toISOString()
+        })
+      }
+    } catch (error) {
+      console.error('Failed to move skipped task to bottom in focus mode:', error)
+    }
+    
+    // Reset timer when skipping task and move to next task
+    onSkipTask() // Call parent's skip handler to reset timer and move to next
+  }
+
+  const handleComplete = () => {
+    handleCompleteTask()
   }
 
   return (
@@ -134,7 +260,7 @@ const FocusModeWindow = ({
               <ButtonWithLabel
                 icon={SkipForward}
                 label="Next"
-                onClick={onSkipTask}
+                onClick={handleSkipTask}
               />
               {/* Check */}
               <CheckWithLabel onClick={handleComplete} />
@@ -144,7 +270,8 @@ const FocusModeWindow = ({
           </div>
         </div>
       </motion.div>
-      {!isHovered && (
+      
+      {!isHovered && activeTask && (
         <div
           className="flex w-full items-center justify-between p-4 text-center"
         >
@@ -156,6 +283,80 @@ const FocusModeWindow = ({
           </div>
         </div>
       )}
+
+      {/* Completion Celebration Modal */}
+      <AnimatePresence>
+        {showCompletionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="mx-4 w-full max-w-sm rounded-2xl border border-green-200 bg-white p-6 shadow-2xl dark:border-green-800 dark:bg-card"
+            >
+              {/* Header */}
+              <div className="mb-6 text-center">
+                <div className="mb-2 text-sm font-medium text-green-600 dark:text-green-400">
+                  Bikin PR
+                </div>
+                <h2 className="text-2xl font-bold text-foreground">
+                  Well done! 🎉
+                </h2>
+              </div>
+
+              {/* Celebration Image/Icon */}
+              <div className="mb-6 flex justify-center">
+                <div className="flex h-32 w-32 items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-green-600">
+                  <CheckCircle2 size={64} className="text-white" fill="currentColor" />
+                </div>
+              </div>
+
+              {/* Completion Message */}
+              <div className="mb-6 text-center">
+                <p className="text-lg font-medium text-green-600 dark:text-green-400">
+                  You finished the task!
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  "{completedTaskTitle}"
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <Button
+                  onClick={handleNextTask}
+                  className="w-full rounded-full bg-gradient-to-r from-green-400 to-green-600 py-3 text-white hover:from-green-500 hover:to-green-700"
+                >
+                  <SkipForward className="mr-2 h-4 w-4" />
+                  Next Task
+                </Button>
+                <Button
+                  onClick={handleTakeBreak}
+                  variant="ghost"
+                  className="w-full py-3 text-muted-foreground hover:text-foreground"
+                >
+                  <Coffee className="mr-2 h-4 w-4" />
+                  Take a Break
+                </Button>
+              </div>
+
+              {/* Time Stats */}
+              <div className="mt-6 flex justify-between text-sm text-muted-foreground">
+                <span>Est: None</span>
+                <span className="text-green-600 dark:text-green-400">
+                  Taken: {taskCompletionTime}min
+                </span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
