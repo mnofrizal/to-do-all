@@ -26,7 +26,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     { id: 'home', label: 'Home', icon: Home },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare, badge: '4' },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'settings', label: 'Settings', icon: Settings },
   ]
 
   // Fetch workspaces from database

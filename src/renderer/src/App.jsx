@@ -437,26 +437,7 @@ const App = () => {
             </div>
           </motion.div>
         )
-      case 'settings':
-        return (
-          <motion.div
-            key="settings"
-            initial="initial"
-            animate="in"
-            exit="out"
-            variants={pageVariants}
-            transition={pageTransition}
-            className="p-8"
-          >
-            <div className="space-y-4">
-              <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-              <p className="text-muted-foreground">Configure your preferences here.</p>
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">Settings page coming soon...</p>
-              </div>
-            </div>
-          </motion.div>
-        )
+     
       default:
         return (
           <motion.div

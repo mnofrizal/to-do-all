@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, MoreHorizontal, Clock, ExpandIcon, Edit, Copy, Archive } from 'lucide-react'
+import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
@@ -161,7 +161,7 @@ const HomePage = ({ onCardClick }) => {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
-                      <MoreHorizontal className="h-4 w-4" />
+                      <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-20 min-w-[7rem] rounded-lg border border-border bg-background drop-shadow-2xl">
