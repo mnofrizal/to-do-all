@@ -9,6 +9,8 @@ const ListFormDialog = ({
   editingList,
   newListName,
   setNewListName,
+  newListDescription,
+  setNewListDescription,
   selectedColor,
   setSelectedColor,
   selectedIcon,
@@ -87,12 +89,27 @@ const ListFormDialog = ({
           </div>
 
           {/* List Name Input */}
-          <div className="mb-6">
+          <div className="mb-4">
             <Input
               value={newListName}
               onChange={(e) => setNewListName(e.target.value)}
               className="h-10 rounded-lg border-2 border-primary/20 bg-background px-3 text-center focus:border-primary"
               placeholder="List name"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateList()
+                }
+              }}
+            />
+          </div>
+
+          {/* List Description Input */}
+          <div className="mb-6">
+            <Input
+              value={newListDescription}
+              onChange={(e) => setNewListDescription(e.target.value)}
+              className="h-10 rounded-lg border-2 border-primary/20 bg-background px-3 text-center focus:border-primary"
+              placeholder="List description (optional)"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   handleCreateList()

@@ -212,13 +212,19 @@ ipcMain.handle('global-search', async (_, query) => {
     // Search lists
     const lists = await prisma.list.findMany({
       where: {
-        name: { contains: query }
+        OR: [
+          { name: { contains: query } },
+          { description: { contains: query } }
+        ]
       },
       select: {
         id: true,
         name: true,
+        description: true,
         icon: true,
         iconColor: true,
+        isArchived: true,
+        archivedAt: true,
         workspace: {
           select: {
             id: true,

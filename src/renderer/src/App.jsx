@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './components/Sidebar'
 import HomePage from './components/HomePage'
+import ArchivedPage from './components/ArchivedPage'
 import TaskProgress from './components/TaskProgress'
 import TitleBar from './components/TitleBar'
 import TopNavbar from './components/TopNavbar'
@@ -417,7 +418,10 @@ const App = () => {
             variants={pageVariants}
             transition={pageTransition}
           >
-            <HomePage onCardClick={handleCardClick} activeWorkspace={activeWorkspace} />
+            <HomePage
+              onCardClick={handleCardClick}
+              activeWorkspace={activeWorkspace}
+            />
           </motion.div>
         )
       case 'tasks':
@@ -460,6 +464,19 @@ const App = () => {
             </div>
           </motion.div>
         )
+      case 'archived':
+        return (
+          <motion.div
+            key="archived"
+            initial="initial"
+            animate="in"
+            exit="out"
+            variants={pageVariants}
+            transition={pageTransition}
+          >
+            <ArchivedPage currentUser={currentUser} />
+          </motion.div>
+        )
      
       default:
         return (
@@ -471,7 +488,10 @@ const App = () => {
             variants={pageVariants}
             transition={pageTransition}
           >
-            <HomePage onCardClick={handleCardClick} activeWorkspace={activeWorkspace} />
+            <HomePage
+              onCardClick={handleCardClick}
+              activeWorkspace={activeWorkspace}
+            />
           </motion.div>
         )
     }

@@ -16,6 +16,8 @@ const useAppStore = create(
     activeWorkspace: null,
     selectedList: null,
     workspaceLists: [],
+    archivedLists: [],
+    workspaces: [],
     
     // Task view state
     activeTaskView: 'kanban',
@@ -58,6 +60,63 @@ const useAppStore = create(
     setActiveWorkspace: (workspace) => set({ activeWorkspace: workspace }),
     setSelectedList: (list) => set({ selectedList: list }),
     setWorkspaceLists: (lists) => set({ workspaceLists: lists }),
+    setArchivedLists: (lists) => set({ archivedLists: lists }),
+    setWorkspaces: (workspaces) => set({ workspaces: workspaces }),
+
+    // Helper actions for archive operations
+    archiveList: (listId) => set((state) => {
+      const updatedWorkspaceLists = state.workspaceLists.filter(list => list.id !== listId)
+      const archivedList = state.workspaceLists.find(list => list.id === listId)
+      const updatedArchivedLists = archivedList
+        ? [...state.archivedLists, { ...archivedList, isArchived: true, archivedAt: new Date() }]
+        : state.archivedLists
+      
+      // Update workspace counts
+      const updatedWorkspaces = state.workspaces.map(workspace => {
+        if (archivedList && workspace.id === archivedList.workspaceId) {
+          const currentCount = workspace._count?.lists || workspace.totalCount || 0
+          return {
+            ...workspace,
+            _count: { ...workspace._count, lists: Math.max(0, currentCount - 1) },
+            totalCount: Math.max(0, currentCount - 1)
+          }
+        }
+        return workspace
+      })
+
+      return {
+        workspaceLists: updatedWorkspaceLists,
+        archivedLists: updatedArchivedLists,
+        workspaces: updatedWorkspaces
+      }
+    }),
+
+    unarchiveList: (listId) => set((state) => {
+      const updatedArchivedLists = state.archivedLists.filter(list => list.id !== listId)
+      const unarchivedList = state.archivedLists.find(list => list.id === listId)
+      const updatedWorkspaceLists = unarchivedList
+        ? [...state.workspaceLists, { ...unarchivedList, isArchived: false, archivedAt: null }]
+        : state.workspaceLists
+      
+      // Update workspace counts
+      const updatedWorkspaces = state.workspaces.map(workspace => {
+        if (unarchivedList && workspace.id === unarchivedList.workspaceId) {
+          const currentCount = workspace._count?.lists || workspace.totalCount || 0
+          return {
+            ...workspace,
+            _count: { ...workspace._count, lists: currentCount + 1 },
+            totalCount: currentCount + 1
+          }
+        }
+        return workspace
+      })
+
+      return {
+        workspaceLists: updatedWorkspaceLists,
+        archivedLists: updatedArchivedLists,
+        workspaces: updatedWorkspaces
+      }
+    }),
     
     // Actions for task view
     setActiveTaskView: (view) => set({ activeTaskView: view }),

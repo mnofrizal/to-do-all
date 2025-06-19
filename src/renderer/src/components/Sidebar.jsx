@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, CheckSquare, Calendar, Settings, Plus, X, Check, MoreVertical, Edit, Trash2, LogOut, User } from 'lucide-react'
+import { Home, CheckSquare, Calendar, Settings, Plus, X, Check, MoreVertical, Edit, Trash2, LogOut, User, Archive, RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
+import useAppStore from '../stores/useAppStore'
 
 const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspace, currentUser, onLogout }) => {
-  const [workspaces, setWorkspaces] = useState([])
+  // Get state from Zustand store
+  const { workspaces, archivedLists, setWorkspaces, setArchivedLists, unarchiveList } = useAppStore()
+  
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false)
   const [showWorkspaceInput, setShowWorkspaceInput] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
@@ -28,7 +31,29 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     { id: 'calendar', label: 'Calendar', icon: Calendar },
   ]
 
-  // Fetch workspaces from database
+  // Fetch archived lists function
+  const fetchArchivedLists = async () => {
+    if (!currentUser?.id) return
+    
+    try {
+      // Get all workspaces for the user
+      const userWorkspaces = await window.db.getWorkspaces(currentUser.id)
+      
+      // Get all archived lists from all user's workspaces
+      const allArchivedLists = []
+      for (const workspace of userWorkspaces) {
+        const lists = await window.db.getLists(workspace.id)
+        const archivedListsInWorkspace = lists.filter(list => list.isArchived)
+        allArchivedLists.push(...archivedListsInWorkspace)
+      }
+      
+      setArchivedLists(allArchivedLists)
+    } catch (error) {
+      console.error('Failed to fetch archived lists:', error)
+    }
+  }
+
+  // Fetch workspaces and archived lists from database
   useEffect(() => {
     const fetchWorkspaces = async () => {
       if (!currentUser?.id) return
@@ -36,17 +61,18 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
       try {
         const fetchedWorkspaces = await window.db.getWorkspaces(currentUser.id)
         
-        // Calculate list counts for each workspace
+        // Calculate list counts for each workspace (excluding archived lists)
         const workspacesWithCounts = await Promise.all(
           fetchedWorkspaces.map(async (workspace) => {
             try {
               const lists = await window.db.getLists(workspace.id)
+              const activeLists = lists.filter(list => !list.isArchived)
               
               return {
                 ...workspace,
                 icon: workspace.name.charAt(0).toUpperCase(),
                 color: getWorkspaceColor(workspace.id),
-                totalCount: lists.length
+                totalCount: activeLists.length
               }
             } catch (error) {
               console.error('Error calculating list count for workspace:', workspace.id, error)
@@ -72,7 +98,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     }
     
     fetchWorkspaces()
+    fetchArchivedLists()
   }, [activeWorkspace, currentUser?.id])
+
 
   // Helper function to assign colors to workspaces
   const getWorkspaceColor = (workspaceId) => {
@@ -111,7 +139,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
         totalCount: 0
       }
       
-      setWorkspaces(prev => [...prev, workspaceWithExtras])
+      setWorkspaces([...workspaces, workspaceWithExtras])
       setActiveWorkspace(newWorkspace.id)
       
       // Reset input state
@@ -155,8 +183,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     try {
       await window.db.updateWorkspace(editingWorkspace.id, { name: editWorkspaceName.trim() })
       
-      // Update local state
-      setWorkspaces(prev => prev.map(workspace =>
+      // Update store state
+      setWorkspaces(workspaces.map(workspace =>
         workspace.id === editingWorkspace.id
           ? {
               ...workspace,
@@ -196,8 +224,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     try {
       await window.db.deleteWorkspace(workspace.id)
       
-      // Update local state
-      setWorkspaces(prev => prev.filter(w => w.id !== workspace.id))
+      // Update store state
+      setWorkspaces(workspaces.filter(w => w.id !== workspace.id))
       
       // If deleted workspace was active, switch to first available workspace
       if (activeWorkspace === workspace.id) {
@@ -223,6 +251,45 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
     } else if (e.key === 'Escape') {
       handleCancelEdit()
     }
+  }
+
+  // Handle unarchive list
+  const handleUnarchiveList = async (listId) => {
+    try {
+      const now = new Date().toISOString()
+      await window.db.updateList(listId, {
+        isArchived: false,
+        archivedAt: null,
+        updatedAt: now
+      })
+      
+      // Update Zustand store - this will automatically update workspace counts and archived lists
+      unarchiveList(listId)
+      
+    } catch (error) {
+      console.error('Failed to unarchive list:', error)
+      alert('Failed to unarchive list. Please try again.')
+    }
+  }
+
+  // Calculate days since archived
+  const getDaysSinceArchived = (archivedAt) => {
+    if (!archivedAt) return 0
+    const now = new Date()
+    const archived = new Date(archivedAt)
+    const diffTime = Math.abs(now - archived)
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+
+  // Format archive date
+  const formatArchiveDate = (archivedAt) => {
+    const days = getDaysSinceArchived(archivedAt)
+    if (days === 0) return 'Today'
+    if (days === 1) return '1 day ago'
+    if (days < 7) return `${days} days ago`
+    if (days < 30) return `${Math.floor(days / 7)} week${Math.floor(days / 7) > 1 ? 's' : ''} ago`
+    return `${Math.floor(days / 30)} month${Math.floor(days / 30) > 1 ? 's' : ''} ago`
   }
 
   // Animation variants
@@ -313,9 +380,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
             <div
               key={workspace.id}
               className={`group relative flex items-center justify-between rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground ${
-                activeWorkspace === workspace.id ? 'bg-zinc-100 dark:bg-zinc-800 text-accent-foreground' : ''
+                activeWorkspace === workspace.id && activeMenu !== 'archived' ? 'bg-zinc-100 dark:bg-zinc-800 text-accent-foreground' : ''
               }`}
-              onClick={() => setActiveWorkspace(workspace.id)}
+              onClick={() => {
+                setActiveWorkspace(workspace.id)
+                setActiveMenu('home') // Switch to home when selecting a workspace
+              }}
             >
               <button
            
@@ -415,6 +485,31 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
               Add Workspace
             </Button>
           )}
+        </div>
+
+        {/* Archived Menu Item */}
+        <div className="mt-4 border-t border-border pt-4">
+          <button
+            onClick={() => {
+              setActiveMenu('archived')
+              setActiveWorkspace(null) // Clear workspace selection when viewing archived
+            }}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left ${
+              activeMenu === 'archived'
+                ? 'bg-zinc-100 dark:bg-zinc-800 text-accent-foreground'
+                : 'text-muted-foreground hover:bg-zinc-100 hover:dark:bg-zinc-800 hover:text-accent-foreground'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <Archive size={16} />
+              <span className="text-sm font-medium">Archived</span>
+            </div>
+            {archivedLists.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {archivedLists.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 

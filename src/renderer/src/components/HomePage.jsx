@@ -11,14 +11,15 @@ import ListFormDialog from './ListFormDialog'
 const HomePage = ({ onCardClick }) => {
   const [lists, setLists] = useState([])
   const [newListName, setNewListName] = useState('')
+  const [newListDescription, setNewListDescription] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingList, setEditingList] = useState(null)
   const [selectedColor, setSelectedColor] = useState('bg-blue-500')
   const [selectedIcon, setSelectedIcon] = useState('')
   const [iconFile, setIconFile] = useState(null)
 
-  // Get activeWorkspace from Zustand store
-  const { activeWorkspace } = useAppStore()
+  // Get activeWorkspace and store actions from Zustand store
+  const { activeWorkspace, archiveList, setWorkspaceLists } = useAppStore()
 
   // Color options for list icons
   const colorOptions = [
@@ -38,9 +39,12 @@ const HomePage = ({ onCardClick }) => {
         try {
           const fetchedLists = await window.db.getLists(activeWorkspace)
           
+          // Filter out archived lists from normal view
+          const activeLists = fetchedLists.filter(list => !list.isArchived)
+          
           // Fetch tasks for each list to calculate pending task counts
           const listsWithTasks = await Promise.all(
-            fetchedLists.map(async (list) => {
+            activeLists.map(async (list) => {
               try {
                 const tasks = await window.db.getTasks(list.id)
                 return {
@@ -58,6 +62,8 @@ const HomePage = ({ onCardClick }) => {
           )
           
           setLists(listsWithTasks)
+          // Also update the Zustand store
+          setWorkspaceLists(listsWithTasks)
         } catch (error) {
           console.error('Failed to fetch lists for workspace:', activeWorkspace, error)
           setLists([])
@@ -76,6 +82,7 @@ const HomePage = ({ onCardClick }) => {
           // Edit mode
           const updateData = {
             name: newListName,
+            description: newListDescription || null,
             icon: selectedIcon || newListName.charAt(0).toUpperCase(),
             iconColor: selectedColor
           }
@@ -84,6 +91,7 @@ const HomePage = ({ onCardClick }) => {
           // Create mode
           const newListData = {
             name: newListName,
+            description: newListDescription || null,
             icon: selectedIcon || newListName.charAt(0).toUpperCase(),
             iconColor: selectedColor,
             workspaceId: activeWorkspace
@@ -114,6 +122,7 @@ const HomePage = ({ onCardClick }) => {
   const handleDialogClose = () => {
     // Reset form when closing
     setNewListName('')
+    setNewListDescription('')
     setSelectedColor('bg-blue-500')
     setSelectedIcon('')
     setIconFile(null)
@@ -126,6 +135,7 @@ const HomePage = ({ onCardClick }) => {
     if (listToEdit) {
       setEditingList(listToEdit)
       setNewListName(listToEdit.name)
+      setNewListDescription(listToEdit.description || '')
       setSelectedColor(listToEdit.iconColor)
       setSelectedIcon(listToEdit.icon)
       setIsDialogOpen(true)
@@ -138,6 +148,7 @@ const HomePage = ({ onCardClick }) => {
       try {
         const duplicatedListData = {
           name: `${listToDuplicate.name} (Copy)`,
+          description: listToDuplicate.description,
           icon: listToDuplicate.icon,
           iconColor: listToDuplicate.iconColor,
           workspaceId: activeWorkspace
@@ -163,6 +174,31 @@ const HomePage = ({ onCardClick }) => {
         } catch (error) {
           console.error('Failed to delete list:', error)
           window.alert('Failed to delete list. Please try again.')
+        }
+      }
+    }
+  }
+
+  const handleArchiveList = async (listId) => {
+    const listToArchive = lists.find(list => list.id === listId)
+    if (listToArchive) {
+      const confirmArchive = window.confirm(`Archive "${listToArchive.name}"? It will be moved to the archived section.`)
+      if (confirmArchive) {
+        try {
+          const now = new Date().toISOString()
+          await window.db.updateList(listId, {
+            isArchived: true,
+            archivedAt: now,
+            updatedAt: now
+          })
+          // Remove from current lists view
+          setLists(lists.filter(list => list.id !== listId))
+          
+          // Update Zustand store - this will automatically update workspace counts
+          archiveList(listId)
+        } catch (error) {
+          console.error('Failed to archive list:', error)
+          window.alert('Failed to archive list. Please try again.')
         }
       }
     }
@@ -254,12 +290,19 @@ const HomePage = ({ onCardClick }) => {
             >
          <div className='px-6 pt-3'>
          <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className={`${list.iconColor} shadow-2xl text-white rounded-md w-5 h-5 flex items-center justify-center text-sm font-bold`}>
-                    {list.icon}
-                  </div>
-                  <CardTitle className="text-md max-w-[180px] truncate text-card-foreground" title={list.name}>{list.name}</CardTitle>
-                </div>
+               <div className="flex items-center space-x-3">
+                 <div className={`${list.iconColor} shadow-2xl text-white rounded-md w-5 h-5 flex items-center justify-center text-sm font-bold`}>
+                   {list.icon}
+                 </div>
+                 <div className="flex flex-col">
+                   <CardTitle className="text-md max-w-[180px] truncate text-card-foreground" title={list.name}>{list.name}</CardTitle>
+                   {list.description && (
+                     <p className="max-w-[180px] truncate text-xs text-muted-foreground" title={list.description}>
+                       {list.description}
+                     </p>
+                   )}
+                 </div>
+               </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -289,6 +332,15 @@ const HomePage = ({ onCardClick }) => {
                       Duplicate
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleArchiveList(list.id)
+                      }}
+                      className="text-orange-600 focus:text-orange-600"
+                    >
+                      Archive
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation()
@@ -393,6 +445,8 @@ const HomePage = ({ onCardClick }) => {
           editingList={editingList}
           newListName={newListName}
           setNewListName={setNewListName}
+          newListDescription={newListDescription}
+          setNewListDescription={setNewListDescription}
           selectedColor={selectedColor}
           setSelectedColor={setSelectedColor}
           selectedIcon={selectedIcon}
