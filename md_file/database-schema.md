@@ -326,9 +326,9 @@ model Workspace {
 model Task {
   id                String    @id @default(cuid())
   title             String
-  description       String?
+  // description       String?
   status            String    @default("backlog") // backlog/inprogress/done
-  completed         Boolean   @default(false)
+  // completed         Boolean   @default(false)
   priority          String    @default("medium") // low/medium/high
   estimatedTime     Int       @default(60) // minutes
   timeSpent         Int       @default(0)  // minutes (accumulated from TimeSession)
@@ -338,6 +338,7 @@ model Task {
   weekNumber        Int?
   weekYear          Int?
   assignedWeek      String?   // "2025-W24"
+
   position          Int       @default(0)
   
   taskListId  String

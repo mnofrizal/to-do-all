@@ -275,7 +275,7 @@ const FocusModeWindow = ({
         <div
           className="flex w-full items-center justify-between p-4 text-center"
         >
-          <h1 className="text-base font-semibold tracking-wider text-foreground">
+          <h1 className="text-left text-base font-semibold tracking-wider text-foreground">
             {activeTask.title}
           </h1>
           <div className="text-lg font-bold tracking-wider text-foreground">

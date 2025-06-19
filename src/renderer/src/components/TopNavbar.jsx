@@ -7,10 +7,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useTheme } from '../contexts/ThemeContext'
 import useAppStore from '../stores/useAppStore'
+import SearchDialog from './SearchDialog'
 
 const TopNavbar = ({ onBack, onListChange }) => {
   const { theme, colorTheme, setThemeMode, setColorThemeMode, availableColorThemes } = useTheme()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [currentTheme, setCurrentTheme] = useState('light')
   const [language, setLanguage] = useState('english')
   const [hideEstDoneTimes, setHideEstDoneTimes] = useState(true)
@@ -73,6 +75,20 @@ const TopNavbar = ({ onBack, onListChange }) => {
     console.log('Hide est/done times:', !hideEstDoneTimes)
   }
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + K to open search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsSearchOpen(true)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // Fetch lists for the current workspace
   useEffect(() => {
     fetchWorkspaceLists(activeWorkspace)
@@ -109,7 +125,7 @@ const TopNavbar = ({ onBack, onListChange }) => {
           {/* List selector dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex cursor-pointer items-center space-x-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:bg-accent">
+              <div className="flex w-64 cursor-pointer items-center justify-between space-x-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:bg-accent">
                 <div className="flex items-center space-x-1">
                   <div className="flex items-center">
                     {workspaceLists.length > 0 ? (
@@ -117,15 +133,15 @@ const TopNavbar = ({ onBack, onListChange }) => {
                         {workspaceLists.slice(0, 2).map((list, index) => (
                           <div
                             key={list.id}
-                            className={`flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white ${
-                              list.iconColor || 'bg-gray-500'
+                            className={`flex h-5 w-5 items-center justify-center rounded shadow-2xl text-xs font-bold text-white ${
+                              list.iconColor 
                             } ${index > 0 ? '-ml-2' : ''}`}
                           >
                             {list.icon || getIconInitials(list.name)}
                           </div>
                         ))}
                         {workspaceLists.length > 2 && (
-                          <div className="-ml-2 flex h-6 w-6 items-center justify-center rounded bg-zinc-600 text-xs font-bold text-white">
+                          <div className="-ml-2 flex h-5 w-5 items-center justify-center rounded bg-zinc-600 text-xs font-bold text-white">
                             +{workspaceLists.length - 2}
                           </div>
                         )}
@@ -136,7 +152,7 @@ const TopNavbar = ({ onBack, onListChange }) => {
                       </div>
                     )}
                   </div>
-                  <span className="ml-2 font-semibold text-foreground">
+                  <span className="ml-2 max-w-40 truncate text-sm font-semibold text-foreground">
                     {selectedList ? selectedList.name : 'Select List'}
                   </span>
                 </div>
@@ -165,7 +181,7 @@ const TopNavbar = ({ onBack, onListChange }) => {
                       {list.icon || getIconInitials(list.name)}
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium text-foreground">{list.name}</div>
+                      <div className="text-xs font-medium text-foreground">{list.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {/* You can add task count here if needed */}
                         List
@@ -287,7 +303,13 @@ const TopNavbar = ({ onBack, onListChange }) => {
         )}
 
         {/* Search */}
-        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onClick={() => setIsSearchOpen(true)}
+          title="Search (Ctrl+K)"
+        >
           <Search className="h-5 w-5" />
         </Button>
 
@@ -317,7 +339,7 @@ const TopNavbar = ({ onBack, onListChange }) => {
                   className="h-6 w-6 rounded-full object-cover"
                 />
               ) : (
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium uppercase text-primary-foreground">
                   {currentUser?.name?.charAt(0) || currentUser?.username?.charAt(0) || 'U'}
                 </div>
               )}
@@ -357,13 +379,13 @@ const TopNavbar = ({ onBack, onListChange }) => {
               <h3 className="text-lg font-semibold text-card-foreground">General</h3>
               
               {/* Hide est/done times toggle */}
-              <div className="flex items-center justify-between">
+              {/* <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Hide est/done times on tasks</span>
                 <Switch
                   checked={hideEstDoneTimes}
                   onCheckedChange={setHideEstDoneTimes}
                 />
-              </div>
+              </div> */}
 
               {/* Theme Settings */}
               <div className="flex items-center justify-between">
@@ -427,6 +449,12 @@ const TopNavbar = ({ onBack, onListChange }) => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Search Dialog */}
+      <SearchDialog
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+      />
     </div>
   )
 }

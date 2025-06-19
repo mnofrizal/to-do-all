@@ -132,12 +132,20 @@ const FloatingTodayWindow = ({
   
   const tasks = getTodayTasks()
 
-  // Initialize active task if none set
+  // Initialize active task if none set or current active task is not in today's tasks
   useEffect(() => {
-    if (tasks.length > 0 && !activeTask) {
-      // Activate first task
-      const firstTask = tasks[0]
-      onActivateTask(firstTask)
+    if (tasks.length > 0) {
+      // Check if current activeTask is still in today's tasks
+      const isActiveTaskInToday = activeTask && tasks.some(task => task.id === activeTask.id)
+      
+      if (!activeTask || !isActiveTaskInToday) {
+        // Activate first available task
+        const firstTask = tasks[0]
+        onActivateTask(firstTask)
+      }
+    } else if (activeTask) {
+      // No today tasks available, clear active task
+      onActivateTask(null)
     }
   }, [tasks.length, activeTask, onActivateTask])
 

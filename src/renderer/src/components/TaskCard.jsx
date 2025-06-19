@@ -107,39 +107,62 @@ const TaskCard = ({
           )}
           
           {/* Checklist button */}
-          <AnimatePresence>
-            {(hoveredTask === task.id || columnId === 'done') && (
-              <motion.button
-                initial={columnId === 'done' ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={columnId === 'done' ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleCompleteTask(task.id)
-                }}
-                className={`absolute z-10 mt-0.5 transition-colors ${
-                  columnId === 'done'
-                    ? 'text-green-600 hover:text-green-700'
-                    : 'text-muted-foreground hover:text-green-600'
-                } ${
-                  columnId === 'today' ? 'left-4' : 'left-0'
-                }`}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <CheckCircle2
-                  size={16}
-                  strokeWidth={2}
-                  fill={columnId === 'done' ? 'currentColor' : 'none'}
-                />
-              </motion.button>
-            )}
-          </AnimatePresence>
+          {editingTask === task.id ? (
+            // Always show checklist button when in edit mode
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCompleteTask(task.id)
+              }}
+              className={`${columnId === 'done' ? 'relative' : 'absolute z-10'} mt-0.5 transition-colors ${
+                columnId === 'done'
+                  ? 'text-green-600 hover:text-green-700'
+                  : 'text-muted-foreground hover:text-green-600'
+              } ${
+                columnId === 'today' && columnId !== 'done' ? 'left-4' : columnId !== 'done' ? 'left-0' : ''
+              }`}
+            >
+              <CheckCircle2
+                size={16}
+                strokeWidth={2}
+                fill={columnId === 'done' ? 'currentColor' : 'none'}
+              />
+            </button>
+          ) : (
+            <AnimatePresence>
+              {(hoveredTask === task.id || columnId === 'done') && (
+                <motion.button
+                  initial={columnId === 'done' ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={columnId === 'done' ? { opacity: 1, x: 0 } : { opacity: 0, x: -10 }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCompleteTask(task.id)
+                  }}
+                  className={`${columnId === 'done' ? 'relative' : 'absolute z-10'} mt-0.5 transition-colors ${
+                    columnId === 'done'
+                      ? 'text-green-600 hover:text-green-700'
+                      : 'text-muted-foreground hover:text-green-600'
+                  } ${
+                    columnId === 'today' && columnId !== 'done' ? 'left-4' : columnId !== 'done' ? 'left-0' : ''
+                  }`}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <CheckCircle2
+                    size={16}
+                    strokeWidth={2}
+                    fill={columnId === 'done' ? 'currentColor' : 'none'}
+                  />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          )}
           
           {/* Title with smooth slide animation - Editable */}
           {editingTask === task.id ? (
-            <motion.input
+            <input
               type="text"
               value={editingTaskValue}
               onChange={(e) => setEditingTaskValue(e.target.value)}
@@ -157,19 +180,15 @@ const TaskCard = ({
               onPointerDown={(e) => e.stopPropagation()}
               onFocus={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              className={`flex-1 bg-white rounded px-2 py-1 text-sm font-light border-none outline-none focus:outline-none focus:ring-0 ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}
+              className={`flex-1 bg-white rounded px-2 ${task.status !== 'done' ?  'ml-6 pl-0' : `pl-0`}   text-sm font-light border-none outline-none focus:outline-none focus:ring-0 relative z-50 ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}
               placeholder="Add task title here"
-              animate={{
-                x: hoveredTask === task.id ? 24 : 0
-              }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
               autoFocus
             />
           ) : (
             <motion.span
               className={`font-light text-sm truncate cursor-pointer ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}
               animate={{
-                x: hoveredTask === task.id ? 24 : 0
+                x: (hoveredTask === task.id && columnId !== 'done') ? 24 : 0
               }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               onClick={(e) => {
@@ -182,16 +201,20 @@ const TaskCard = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <AnimatePresence mode="wait">
-            {(hoveredTask === task.id || dropdownOpen[task.id]) ? (
-              <motion.div
-                key="actions"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="z-50 mt-0.5 flex items-center gap-2 bg-background pl-3"
-              >
+          {editingTask === task.id ? (
+            // Show nothing when in edit mode to avoid animation space
+            <div key="empty" />
+          ) : (
+            <AnimatePresence mode="wait">
+              {(hoveredTask === task.id || dropdownOpen[task.id]) ? (
+                <motion.div
+                  key="actions"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  className="z-40 mt-0.5 flex items-center gap-2 bg-background pl-3"
+                >
                 <motion.button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -315,25 +338,26 @@ const TaskCard = ({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </motion.div>
-            ) : (
-              <div key="badges" className="flex items-center gap-2">
-                {/* Priority Badge */}
-                <div
-                  className={`${getPriorityColor(task.priority)} h-3 w-3 rounded-full`}
-                  title={`Priority: ${task.priority}`}
-                />
-                {/* Task Group Badge */}
-                {task.taskGroup && (
+                </motion.div>
+              ) : (
+                <div key="badges" className="flex items-center gap-2">
+                  {/* Priority Badge */}
                   <div
-                    className={`${task.taskGroup.color} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
-                  >
-                    {task.taskGroup.name}
-                  </div>
-                )}
-              </div>
-            )}
-          </AnimatePresence>
+                    className={`${getPriorityColor(task.priority)} h-2 w-2 rounded-full`}
+                    title={`Priority: ${task.priority}`}
+                  />
+                  {/* Task Group Badge */}
+                  {task.taskGroup && (
+                    <div
+                      className={`${task.taskGroup.color} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
+                    >
+                      {task.taskGroup.name}
+                    </div>
+                  )}
+                </div>
+              )}
+            </AnimatePresence>
+          )}
         </div>
       </div>
       

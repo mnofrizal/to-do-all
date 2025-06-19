@@ -53,23 +53,24 @@ if (process.contextIsolated) {
       deleteWorkspace: (id) => ipcRenderer.invoke('delete-workspace', id),
       getLists: (workspaceId) => ipcRenderer.invoke('get-lists', workspaceId),
       createList: (data) => ipcRenderer.invoke('create-list', data),
+      updateList: (id, data) => ipcRenderer.invoke('update-list', { id, data }),
+      deleteList: (id) => ipcRenderer.invoke('delete-list', id),
       getTasks: (listId) => ipcRenderer.invoke('get-tasks', listId),
+      getTask: (taskId) => ipcRenderer.invoke('get-task', taskId),
       createTask: (data) => ipcRenderer.invoke('create-task', data),
       updateTask: (id, data) => ipcRenderer.invoke('update-task', { id, data }),
       deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
       createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
       updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
       deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
-      // TimeSession operations
-      createTimeSession: (data) => ipcRenderer.invoke('create-time-session', data),
-      updateTimeSession: (id, data) => ipcRenderer.invoke('update-time-session', { id, data }),
-      endTimeSession: (id, endTime, duration) => ipcRenderer.invoke('end-time-session', { id, endTime, duration }),
-      getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+      // Simplified Timer operations (no TimeSession creation)
       getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
-      getActiveTimeSession: (taskId, userId) => ipcRenderer.invoke('get-active-time-session', { taskId, userId }),
-      deleteTimeSession: (id) => ipcRenderer.invoke('delete-time-session', id),
-      clearTaskTimeSessions: (taskId) => ipcRenderer.invoke('clear-task-time-sessions', taskId),
-      getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId)
+      getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),
+      // Legacy TimeSession operations (for historical data only)
+      getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+      getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId),
+      // Global search
+      globalSearch: (query) => ipcRenderer.invoke('global-search', query)
     })
   } catch (error) {
     console.error(error)
@@ -97,22 +98,23 @@ if (process.contextIsolated) {
     deleteWorkspace: (id) => ipcRenderer.invoke('delete-workspace', id),
     getLists: (workspaceId) => ipcRenderer.invoke('get-lists', workspaceId),
     createList: (data) => ipcRenderer.invoke('create-list', data),
+    updateList: (id, data) => ipcRenderer.invoke('update-list', { id, data }),
+    deleteList: (id) => ipcRenderer.invoke('delete-list', id),
     getTasks: (listId) => ipcRenderer.invoke('get-tasks', listId),
+    getTask: (taskId) => ipcRenderer.invoke('get-task', taskId),
     createTask: (data) => ipcRenderer.invoke('create-task', data),
     updateTask: (id, data) => ipcRenderer.invoke('update-task', { id, data }),
     deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
     createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
     updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
     deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
-    // TimeSession operations
-    createTimeSession: (data) => ipcRenderer.invoke('create-time-session', data),
-    updateTimeSession: (id, data) => ipcRenderer.invoke('update-time-session', { id, data }),
-    endTimeSession: (id, endTime, duration) => ipcRenderer.invoke('end-time-session', { id, endTime, duration }),
-    getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+    // Simplified Timer operations (no TimeSession creation)
     getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
-    getActiveTimeSession: (taskId, userId) => ipcRenderer.invoke('get-active-time-session', { taskId, userId }),
-    deleteTimeSession: (id) => ipcRenderer.invoke('delete-time-session', id),
-    clearTaskTimeSessions: (taskId) => ipcRenderer.invoke('clear-task-time-sessions', taskId),
-    getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId)
+    getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),
+    // Legacy TimeSession operations (for historical data only)
+    getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
+    getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId),
+    // Global search
+    globalSearch: (query) => ipcRenderer.invoke('global-search', query)
   }
 }

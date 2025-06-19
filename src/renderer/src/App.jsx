@@ -61,9 +61,15 @@ const App = () => {
     loadTasks
   } = useTaskStore()
 
-  // Initialize auth on app start
+  // Initialize auth and timer store on app start
   useEffect(() => {
-    initializeAuth()
+    const initialize = async () => {
+      await initializeAuth()
+      // Initialize timer store after auth (for crash recovery)
+      const { initializeApp } = useTimerStore.getState()
+      await initializeApp()
+    }
+    initialize()
   }, [initializeAuth])
 
   // Cleanup timer on unmount
@@ -120,6 +126,11 @@ const App = () => {
       await pauseForTask()
     }
     
+    // Clear active task if it's the one being completed
+    if (activeTask && activeTask.id === taskId) {
+      setActiveTask(null)
+    }
+    
     // Move to next task in floating or focus mode
     if ((currentView === 'floating' || currentView === 'focus') && selectedList) {
       try {
@@ -130,29 +141,17 @@ const App = () => {
         )
         
         if (todayTasks.length > 0) {
-          const currentIndex = todayTasks.findIndex(task => task.id === activeTask?.id)
-          let nextIndex = currentIndex + 1
-          
-          // If current task was the completed one, start from beginning
-          if (currentIndex === -1) {
-            nextIndex = 0
-          }
-          
-          if (nextIndex < todayTasks.length) {
-            // Move to next task and switch timer
-            const nextTask = todayTasks[nextIndex]
-            setActiveTask(nextTask)
-            if (currentUser) {
-              await switchToTask(nextTask.id, currentUser.id)
-              await startForTask(nextTask.id, currentUser.id)
-            } else {
-              startTimer()
-            }
+          // Find next available task (not the completed one)
+          const nextTask = todayTasks[0] // Get first available task
+          setActiveTask(nextTask)
+          if (currentUser) {
+            await switchToTask(nextTask.id, currentUser.id)
+            await startForTask(nextTask.id, currentUser.id)
           } else {
-            // No more tasks, deactivate
-            setActiveTask(null)
+            startTimer()
           }
         } else {
+          // No more tasks, deactivate
           setActiveTask(null)
         }
       } catch (error) {
@@ -160,9 +159,8 @@ const App = () => {
         setActiveTask(null)
       }
     } else {
-      // In normal mode, go back to normal view
+      // In normal mode, clear active task
       setActiveTask(null)
-      exitSpecialModes()
     }
   }
 
@@ -225,6 +223,9 @@ const App = () => {
       if (isTimerRunning) {
         await pauseForTask()
       }
+      // Clear active task when going back
+      setActiveTask(null)
+      // Exit special modes (floating/focus) to go back to normal view
       exitSpecialModes()
     } else {
       navigateToHome()
@@ -232,13 +233,35 @@ const App = () => {
   }
 
   const handleLeapIt = async () => {
-    // Auto-resume timer when entering floating mode if there's an active task
-    if (activeTask && !isTimerRunning && currentUser) {
+    // When entering floating mode, find and activate the first available today task
+    if (selectedList && currentUser) {
+      try {
+        const allTasks = await window.db.getTasks(selectedList.id)
+        const todayTasks = allTasks.filter(task =>
+          task.scheduledForToday === true && task.status !== 'done'
+        )
+        
+        if (todayTasks.length > 0) {
+          const firstTask = todayTasks[0]
+          setActiveTask(firstTask)
+          await switchToTask(firstTask.id, currentUser.id)
+          await startForTask(firstTask.id, currentUser.id)
+        } else {
+          // No today tasks available, clear active task
+          setActiveTask(null)
+        }
+      } catch (error) {
+        console.error('Failed to get tasks for leap it:', error)
+        setActiveTask(null)
+      }
+    } else if (activeTask && !isTimerRunning && currentUser) {
+      // Fallback: resume existing active task
       await switchToTask(activeTask.id, currentUser.id)
       await startForTask(activeTask.id, currentUser.id)
     } else if (activeTask && !isTimerRunning) {
       startTimer()
     }
+    
     enterFloatingMode()
   }
 

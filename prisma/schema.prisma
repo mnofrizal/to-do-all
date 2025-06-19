@@ -47,30 +47,34 @@ model List {
 }
 
 model Task {
-  id            Int     @id @default(autoincrement())
-  title         String
-  status        String  @default("inprogress")
-  priority      String  @default("medium")
-  notes         String?
-  timeSpent     Int     @default(0)
-  estimatedTime Int     @default(60)
-  orderInColumn Int     @default(0)
-  weekNumber    Int?
-  weekYear      Int?
+  id    Int    @id @default(autoincrement())
+  title String
 
+  status String @default("inprogress")
+
+  priority          String    @default("medium")
+  estimatedTime     Int       @default(60)
+  timeSpent         Int       @default(0)
+  lastStartTime     DateTime? // When timer started (null = not active)
   deadline          DateTime?
-  assignedWeek      String?
   scheduledForToday Boolean   @default(false)
   todayScheduledAt  DateTime?
-  list              List      @relation(fields: [listId], references: [id])
-  listId            Int
+  weekNumber        Int?
+  weekYear          Int?
+  assignedWeek      String?
+
+  orderInColumn Int     @default(0)
+  notes         String?
 
   subtasks     Subtask[]
-  timeSessions TimeSession[]
+  timeSessions TimeSession[] // Keep for historical data only
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+
+  listId Int
+  list   List @relation(fields: [listId], references: [id])
 }
 
 model Subtask {

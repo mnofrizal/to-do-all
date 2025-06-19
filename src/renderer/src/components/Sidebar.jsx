@@ -36,28 +36,20 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
       try {
         const fetchedWorkspaces = await window.db.getWorkspaces(currentUser.id)
         
-        // Calculate task counts for each workspace
+        // Calculate list counts for each workspace
         const workspacesWithCounts = await Promise.all(
           fetchedWorkspaces.map(async (workspace) => {
             try {
               const lists = await window.db.getLists(workspace.id)
-              let totalTaskCount = 0
-              
-              // Count tasks in all lists for this workspace
-              for (const list of lists) {
-                const tasks = await window.db.getTasks(list.id)
-                // Count only incomplete tasks
-                totalTaskCount += tasks.filter(task => task.status !== 'done').length
-              }
               
               return {
                 ...workspace,
                 icon: workspace.name.charAt(0).toUpperCase(),
                 color: getWorkspaceColor(workspace.id),
-                totalCount: totalTaskCount
+                totalCount: lists.length
               }
             } catch (error) {
-              console.error('Error calculating task count for workspace:', workspace.id, error)
+              console.error('Error calculating list count for workspace:', workspace.id, error)
               return {
                 ...workspace,
                 icon: workspace.name.charAt(0).toUpperCase(),
@@ -320,13 +312,14 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
           {workspaces.map((workspace) => (
             <div
               key={workspace.id}
-              className={`group relative flex items-center justify-between px-3 py-2 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground ${
+              className={`group relative flex items-center justify-between rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground ${
                 activeWorkspace === workspace.id ? 'bg-zinc-100 dark:bg-zinc-800 text-accent-foreground' : ''
               }`}
+              onClick={() => setActiveWorkspace(workspace.id)}
             >
               <button
-                onClick={() => setActiveWorkspace(workspace.id)}
-                className="flex flex-1 items-center space-x-3 text-left"
+           
+                className="flex flex-1 items-center space-x-3 px-3 py-2 text-left"
               >
                 <div className={`${workspace.color} text-white rounded w-6 h-6 flex items-center justify-center text-xs font-bold`}>
                   {workspace.icon}

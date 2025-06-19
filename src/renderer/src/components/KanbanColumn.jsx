@@ -74,6 +74,16 @@ const KanbanColumn = ({
     id: column.id,
   })
 
+  // Function to handle plus icon click - focus on add task input
+  const handlePlusIconClick = () => {
+    const addTaskInput = document.querySelector(`[data-column-id="${column.id}"] input[placeholder="+ ADD TASK"]`)
+    if (addTaskInput) {
+      addTaskInput.focus()
+      // Scroll to the input if it's not visible
+      addTaskInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }
+
   return (
     <div key={column.id} className="flex h-[calc(100vh-150px)] w-full min-w-[350px] max-w-[370px] flex-col">
       <Card className={`flex h-full flex-col border ${column.color} bg-card`}>
@@ -82,7 +92,12 @@ const KanbanColumn = ({
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-card-foreground">{column.title}</h3>
             {column.id !== 'done' && (
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                onClick={handlePlusIconClick}
+              >
                 <Plus className="h-5 w-5 text-zinc-700" />
               </Button>
             )}
@@ -298,7 +313,7 @@ const KanbanColumn = ({
           </CardContent>
 
           {/* Add Task Input - Always visible, right after tasks */}
-          <div className="flex-shrink-0 px-4 pb-2">
+          <div className="flex-shrink-0 px-4 pb-2" data-column-id={column.id}>
             <Input
               placeholder="+ ADD TASK"
               value={newTaskInputs[column.id] || ''}

@@ -1,28 +1,63 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical } from 'lucide-react'
+import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical, X } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
-import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu'
 import useAppStore from '../stores/useAppStore'
+import ListFormDialog from './ListFormDialog'
 
 const HomePage = ({ onCardClick }) => {
   const [lists, setLists] = useState([])
   const [newListName, setNewListName] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingList, setEditingList] = useState(null)
+  const [selectedColor, setSelectedColor] = useState('bg-blue-500')
+  const [selectedIcon, setSelectedIcon] = useState('')
+  const [iconFile, setIconFile] = useState(null)
 
   // Get activeWorkspace from Zustand store
   const { activeWorkspace } = useAppStore()
+
+  // Color options for list icons
+  const colorOptions = [
+    { id: 'gradient', name: 'Gradient', class: 'bg-gradient-to-br from-purple-400 via-pink-400 to-red-400' },
+    { id: 'blue', name: 'Blue', class: 'bg-blue-500' },
+    { id: 'green', name: 'Green', class: 'bg-green-500' },
+    { id: 'pink', name: 'Pink', class: 'bg-pink-500' },
+    { id: 'teal', name: 'Teal', class: 'bg-teal-500' },
+    { id: 'cyan', name: 'Cyan', class: 'bg-cyan-500' },
+    { id: 'yellow', name: 'Yellow', class: 'bg-yellow-500' },
+    { id: 'black', name: 'Black', class: 'bg-black' }
+  ]
 
   useEffect(() => {
     if (activeWorkspace) {
       const fetchLists = async () => {
         try {
           const fetchedLists = await window.db.getLists(activeWorkspace)
-          setLists(fetchedLists)
+          
+          // Fetch tasks for each list to calculate pending task counts
+          const listsWithTasks = await Promise.all(
+            fetchedLists.map(async (list) => {
+              try {
+                const tasks = await window.db.getTasks(list.id)
+                return {
+                  ...list,
+                  tasks: tasks
+                }
+              } catch (error) {
+                console.error('Failed to fetch tasks for list:', list.id, error)
+                return {
+                  ...list,
+                  tasks: []
+                }
+              }
+            })
+          )
+          
+          setLists(listsWithTasks)
         } catch (error) {
           console.error('Failed to fetch lists for workspace:', activeWorkspace, error)
           setLists([])
@@ -35,45 +70,112 @@ const HomePage = ({ onCardClick }) => {
   }, [activeWorkspace])
 
   const handleCreateList = async () => {
-    if (newListName.trim() && activeWorkspace) {
+    if (newListName.trim() && (activeWorkspace || editingList)) {
       try {
-        const newListData = {
-          name: newListName,
-          icon: newListName.charAt(0).toUpperCase(),
-          iconColor: 'bg-gray-500',
-          workspaceId: activeWorkspace
+        if (editingList) {
+          // Edit mode
+          const updateData = {
+            name: newListName,
+            icon: selectedIcon || newListName.charAt(0).toUpperCase(),
+            iconColor: selectedColor
+          }
+          await updateList(editingList.id, updateData)
+        } else {
+          // Create mode
+          const newListData = {
+            name: newListName,
+            icon: selectedIcon || newListName.charAt(0).toUpperCase(),
+            iconColor: selectedColor,
+            workspaceId: activeWorkspace
+          }
+          const newList = await window.db.createList(newListData)
+          setLists([...lists, newList])
         }
-        const newList = await window.db.createList(newListData)
-        setLists([...lists, newList])
-        setNewListName('')
-        setIsDialogOpen(false)
+        
+        // Reset form
+        handleDialogClose()
       } catch (error) {
-        console.error('Failed to create list:', error)
-        alert('Failed to create list. Please try again.')
+        console.error('Failed to save list:', error)
+        window.alert('Failed to save list. Please try again.')
       }
     }
+  }
+
+  const handleIconUpload = (event) => {
+    const file = event.target.files[0]
+    if (file && file.type.startsWith('image/')) {
+      setIconFile(file)
+      // For now, we'll use the file name as icon text
+      // In a real implementation, you'd upload the file and get a URL
+      setSelectedIcon(file.name.charAt(0).toUpperCase())
+    }
+  }
+
+  const handleDialogClose = () => {
+    // Reset form when closing
+    setNewListName('')
+    setSelectedColor('bg-blue-500')
+    setSelectedIcon('')
+    setIconFile(null)
+    setEditingList(null)
+    setIsDialogOpen(false)
   }
 
   const handleEditList = (listId) => {
-    console.log('Edit list:', listId)
-    // TODO: Implement edit functionality
-  }
-
-  const handleDuplicateList = (listId) => {
-    const listToDuplicate = lists.find(list => list.id === listId)
-    if (listToDuplicate) {
-      const duplicatedList = {
-        ...listToDuplicate,
-        id: lists.length + 1,
-        name: `${listToDuplicate.name} (Copy)`,
-        tasks: [...listToDuplicate.tasks]
-      }
-      setLists([...lists, duplicatedList])
+    const listToEdit = lists.find(list => list.id === listId)
+    if (listToEdit) {
+      setEditingList(listToEdit)
+      setNewListName(listToEdit.name)
+      setSelectedColor(listToEdit.iconColor)
+      setSelectedIcon(listToEdit.icon)
+      setIsDialogOpen(true)
     }
   }
 
-  const handleArchiveList = (listId) => {
-    setLists(lists.filter(list => list.id !== listId))
+  const handleDuplicateList = async (listId) => {
+    const listToDuplicate = lists.find(list => list.id === listId)
+    if (listToDuplicate && activeWorkspace) {
+      try {
+        const duplicatedListData = {
+          name: `${listToDuplicate.name} (Copy)`,
+          icon: listToDuplicate.icon,
+          iconColor: listToDuplicate.iconColor,
+          workspaceId: activeWorkspace
+        }
+        const newList = await window.db.createList(duplicatedListData)
+        setLists([...lists, newList])
+      } catch (error) {
+        console.error('Failed to duplicate list:', error)
+        alert('Failed to duplicate list. Please try again.')
+      }
+    }
+  }
+
+  const handleDeleteList = async (listId) => {
+    const listToDelete = lists.find(list => list.id === listId)
+    if (listToDelete) {
+      // Using window.confirm which should work in Electron
+      const confirmDelete = window.confirm(`Are you sure you want to delete "${listToDelete.name}"? This action cannot be undone.`)
+      if (confirmDelete) {
+        try {
+          await window.db.deleteList(listId)
+          setLists(lists.filter(list => list.id !== listId))
+        } catch (error) {
+          console.error('Failed to delete list:', error)
+          window.alert('Failed to delete list. Please try again.')
+        }
+      }
+    }
+  }
+
+  const updateList = async (listId, updateData) => {
+    try {
+      const updatedList = await window.db.updateList(listId, updateData)
+      setLists(lists.map(list => list.id === listId ? updatedList : list))
+    } catch (error) {
+      console.error('Failed to update list:', error)
+      alert('Failed to update list. Please try again.')
+    }
   }
 
   const getIconInitials = (name) => {
@@ -153,30 +255,48 @@ const HomePage = ({ onCardClick }) => {
          <div className='px-6 pt-3'>
          <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className={`${list.iconColor} text-white rounded-md w-6 h-6 flex items-center justify-center text-sm font-bold`}>
+                  <div className={`${list.iconColor} shadow-2xl text-white rounded-md w-5 h-5 flex items-center justify-center text-sm font-bold`}>
                     {list.icon}
                   </div>
-                  <CardTitle className="text-md text-card-foreground">{list.name}</CardTitle>
+                  <CardTitle className="text-md max-w-[180px] truncate text-card-foreground" title={list.name}>{list.name}</CardTitle>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-20 min-w-[7rem] rounded-lg border border-border bg-background drop-shadow-2xl">
-                    <DropdownMenuItem onClick={() => handleEditList(list.id)} className="py-1 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground">
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEditList(list.id)
+                      }}
+                    >
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDuplicateList(list.id)} className="py-1 text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDuplicateList(list.id)
+                      }}
+                    >
                       Duplicate
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-border" />
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() => handleArchiveList(list.id)}
-                      className="py-1 text-xs text-destructive hover:bg-accent focus:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteList(list.id)
+                      }}
+                      className="text-red-600 focus:text-red-600"
                     >
-                      Archive
+                      Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -197,11 +317,13 @@ const HomePage = ({ onCardClick }) => {
                             <>
                               <div className="flex items-center space-x-3">
                                 <span className="text-sm text-muted-foreground">{index + 1}</span>
-                                <span className="flex-1 text-sm text-foreground">{task.title}</span>
+                                <span className="max-w-[150px] flex-1 truncate text-sm text-muted-foreground" title={task.title}>{task.title}</span>
                               </div>
                               <div className="flex items-center">
-                               
-                                <span className="text-xs text-muted-foreground">{task.time}</span>
+                                <span className="text-xs text-muted-foreground">       {task.timeSpent ?
+                        `${Math.floor(task.timeSpent / 60).toString().padStart(2, '0')}:${(task.timeSpent % 60).toString().padStart(2, '0')}`
+                        : '-'
+                      }</span>
                               </div>
                             </>
                           ) : (
@@ -249,53 +371,36 @@ const HomePage = ({ onCardClick }) => {
         ))}
 
             {/* Create New List Card */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Card className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]">
-                  <CardContent className="flex h-full flex-col items-center justify-center text-center">
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground">
-                      <Plus className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <h3 className="mb-2 font-semibold text-muted-foreground">CREATE LIST</h3>
-                  </CardContent>
-                </Card>
-              </DialogTrigger>
-              <DialogContent className="border-border bg-card sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle className="text-card-foreground">Create New List</DialogTitle>
-                  <DialogDescription className="text-muted-foreground">
-                    Create a new task list to organize your todos.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="">
-                    
-                    <Input
-                      id="name"
-                      value={newListName}
-                      onChange={(e) => setNewListName(e.target.value)}
-                      className="col-span-3"
-                      placeholder="Enter list name..."
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleCreateList()
-                        }
-                      }}
-                    />
-                  </div>
+            <Card
+              className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]"
+              onClick={() => setIsDialogOpen(true)}
+            >
+              <CardContent className="flex h-full flex-col items-center justify-center text-center">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground">
+                  <Plus className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={handleCreateList}>
-                    Create List
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                <h3 className="mb-2 font-semibold text-muted-foreground">CREATE LIST</h3>
+              </CardContent>
+            </Card>
+
           </div>
         )}
+
+        {/* Create/Edit List Dialog */}
+        <ListFormDialog
+          isOpen={isDialogOpen}
+          onClose={handleDialogClose}
+          editingList={editingList}
+          newListName={newListName}
+          setNewListName={setNewListName}
+          selectedColor={selectedColor}
+          setSelectedColor={setSelectedColor}
+          selectedIcon={selectedIcon}
+          iconFile={iconFile}
+          handleIconUpload={handleIconUpload}
+          handleCreateList={handleCreateList}
+          colorOptions={colorOptions}
+        />
       </div>
     </div>
   )

@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
+// Global interval tracker to prevent multiple intervals
+let globalIntervalId = null
+
 const useTimerStore = create(
   subscribeWithSelector((set, get) => ({
     // Current active timer (global display)
@@ -8,20 +11,27 @@ const useTimerStore = create(
     isRunning: false,
     intervalId: null,
     
-    // Per-task timer tracking
-    taskTimers: {}, // { taskId: { hours: 0, minutes: 0, seconds: 0 } }
-    activeSessions: {}, // { taskId: sessionId }
+    // Active task tracking
     activeTaskId: null,
-    sessionStartTime: null, // Track when current session started
+    sessionStartTime: null, // Track when current session started (local only)
     
     // Timer actions
     start: () => {
       const { isRunning, intervalId } = get()
-      if (isRunning || intervalId) return
+      if (isRunning || intervalId || globalIntervalId) return
+      
+      // CRITICAL: Clear any existing intervals (both local and global)
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+      if (globalIntervalId) {
+        clearInterval(globalIntervalId)
+        globalIntervalId = null
+      }
       
       const id = setInterval(() => {
         set((state) => {
-          const { timer, activeTaskId, taskTimers } = state
+          const { timer } = state
           let newSeconds = timer.seconds + 1
           let newMinutes = timer.minutes
           let newHours = timer.hours
@@ -35,29 +45,29 @@ const useTimerStore = create(
             newHours += 1
           }
 
-          const newTimer = { hours: newHours, minutes: newMinutes, seconds: newSeconds }
-          
-          // Update both global timer and task-specific timer if there's an active task
-          const updatedTaskTimers = activeTaskId ? {
-            ...taskTimers,
-            [activeTaskId]: newTimer
-          } : taskTimers
-
           return {
-            timer: newTimer,
-            taskTimers: updatedTaskTimers
+            timer: { hours: newHours, minutes: newMinutes, seconds: newSeconds }
           }
         })
       }, 1000)
       
+      // Store in both local state and global tracker
+      globalIntervalId = id
       set({ isRunning: true, intervalId: id })
     },
     
     pause: () => {
       const { intervalId } = get()
+      
+      // Clear both local and global intervals
       if (intervalId) {
         clearInterval(intervalId)
       }
+      if (globalIntervalId) {
+        clearInterval(globalIntervalId)
+        globalIntervalId = null
+      }
+      
       set({ isRunning: false, intervalId: null })
     },
     
@@ -72,45 +82,70 @@ const useTimerStore = create(
     
     reset: () => {
       const { intervalId } = get()
+      
+      // Clear both local and global intervals
       if (intervalId) {
         clearInterval(intervalId)
       }
+      if (globalIntervalId) {
+        clearInterval(globalIntervalId)
+        globalIntervalId = null
+      }
+      
+      // Extra safety: clear all possible intervals by checking window
+      if (typeof window !== 'undefined' && window.clearInterval) {
+        if (intervalId) {
+          window.clearInterval(intervalId)
+        }
+        if (globalIntervalId) {
+          window.clearInterval(globalIntervalId)
+        }
+      }
+      
       set({
         timer: { hours: 0, minutes: 0, seconds: 0 },
         isRunning: false,
-        intervalId: null
+        intervalId: null,
+        activeTaskId: null,
+        sessionStartTime: null
       })
     },
     
-    // Per-task timer management
+    // Simplified timer management - no TimeSession creation
     switchToTask: async (taskId, userId) => {
       const { activeTaskId, isRunning, intervalId } = get()
       
       try {
-        // End current session if there's an active task and timer is running
+        // Save current task if running
         if (activeTaskId && isRunning) {
-          await get().endCurrentSession()
+          await get().pauseForTask()
         }
         
-        // Stop the current timer interval
+        // CRITICAL: Ensure any existing interval is cleared (both local and global)
         if (intervalId) {
           clearInterval(intervalId)
         }
+        if (globalIntervalId) {
+          clearInterval(globalIntervalId)
+          globalIntervalId = null
+        }
         
-        // Load the new task's accumulated time from database
-        const totalSeconds = await window.db.getTaskTotalTime(taskId)
-        const taskTimer = get().secondsToTimer(totalSeconds)
+        // Load the new task's accumulated time
+        const task = await window.db.getTask(taskId)
+        if (!task) {
+          console.error('Task not found:', taskId)
+          return
+        }
         
-        // Update state with new task timer - RESET the timer to task's accumulated time
+        const taskTimer = get().secondsToTimer(task.timeSpent || 0)
+        
+        // Update state with new task timer - ensure clean state
         set({
           activeTaskId: taskId,
-          timer: taskTimer, // Set timer to task's accumulated time
-          taskTimers: {
-            ...get().taskTimers,
-            [taskId]: taskTimer
-          },
+          timer: taskTimer,
           isRunning: false,
-          intervalId: null
+          intervalId: null,
+          sessionStartTime: null
         })
         
       } catch (error) {
@@ -118,71 +153,43 @@ const useTimerStore = create(
       }
     },
     
-    startNewSession: async (taskId, userId) => {
-      try {
-        const sessionStart = new Date()
-        const session = await window.db.createTimeSession({
-          taskId,
-          userId,
-          startTime: sessionStart
-        })
-        
-        set((state) => ({
-          activeSessions: {
-            ...state.activeSessions,
-            [taskId]: session.id
-          },
-          sessionStartTime: sessionStart
-        }))
-        
-        return session
-      } catch (error) {
-        console.error('Failed to start new session:', error)
-        throw error
-      }
-    },
-    
-    endCurrentSession: async () => {
-      const { activeTaskId, activeSessions, timer, sessionStartTime } = get()
-      if (!activeTaskId || !activeSessions[activeTaskId]) return
-      
-      try {
-        const sessionId = activeSessions[activeTaskId]
-        
-        // Calculate ONLY the time spent in this session (not total accumulated time)
-        const sessionDuration = get().getSessionDuration()
-        
-        
-        await window.db.endTimeSession(sessionId, new Date(), sessionDuration)
-        
-        // Remove from active sessions
-        set((state) => {
-          const newActiveSessions = { ...state.activeSessions }
-          delete newActiveSessions[activeTaskId]
-          return {
-            activeSessions: newActiveSessions,
-            sessionStartTime: null
-          }
-        })
-        
-      } catch (error) {
-        console.error('Failed to end session:', error)
-      }
-    },
-    
     // Start timer for specific task
     startForTask: async (taskId, userId) => {
-      const { isRunning, activeTaskId } = get()
+      const { isRunning, activeTaskId, intervalId } = get()
       if (isRunning) return // Already running
       
       try {
+        // CRITICAL: Force clear any existing intervals before starting (both local and global)
+        if (intervalId) {
+          clearInterval(intervalId)
+        }
+        if (globalIntervalId) {
+          clearInterval(globalIntervalId)
+          globalIntervalId = null
+        }
+        set({ intervalId: null, isRunning: false })
+        
+        // Small delay to ensure interval is fully cleared
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
         // If switching to a different task, switch first
         if (activeTaskId !== taskId) {
           await get().switchToTask(taskId, userId)
         }
         
-        // Start new session and timer
-        await get().startNewSession(taskId, userId)
+        const now = new Date()
+        
+        // IMMEDIATELY save start time to database (crash protection)
+        await window.db.updateTask(taskId, {
+          lastStartTime: now,
+          updatedAt: now
+        })
+        
+        // Start local timer and session tracking
+        set({
+          sessionStartTime: now
+        })
+        
         get().start()
         
       } catch (error) {
@@ -190,42 +197,42 @@ const useTimerStore = create(
       }
     },
     
-    // Pause timer and end session
+    // Pause timer and save accumulated time
     pauseForTask: async () => {
-      const { isRunning } = get()
-      if (!isRunning) return
+      const { isRunning, activeTaskId, sessionStartTime } = get()
+      if (!isRunning || !activeTaskId || !sessionStartTime) return
       
       try {
-        await get().endCurrentSession()
+        const now = new Date()
+        const sessionDuration = Math.floor((now - sessionStartTime) / 1000)
+        
+        // Get current task
+        const task = await window.db.getTask(activeTaskId)
+        if (!task) {
+          console.error('Task not found:', activeTaskId)
+          return
+        }
+        
+        const newTimeSpent = (task.timeSpent || 0) + sessionDuration
+        
+        // Update task with accumulated time and clear active state
+        await window.db.updateTask(activeTaskId, {
+          timeSpent: newTimeSpent,
+          lastStartTime: null, // null = timer not active
+          updatedAt: now
+        })
+        
+        // Update local timer to reflect saved time
+        const updatedTimer = get().secondsToTimer(newTimeSpent)
+        set({
+          timer: updatedTimer,
+          sessionStartTime: null
+        })
+        
         get().pause()
+        
       } catch (error) {
         console.error('Failed to pause timer for task:', error)
-      }
-    },
-    
-    // Get timer for specific task
-    getTaskTimer: (taskId) => {
-      const { taskTimers } = get()
-      return taskTimers[taskId] || { hours: 0, minutes: 0, seconds: 0 }
-    },
-    
-    // Load task timer from database
-    loadTaskTimer: async (taskId) => {
-      try {
-        const totalSeconds = await window.db.getTaskTotalTime(taskId)
-        const taskTimer = get().secondsToTimer(totalSeconds)
-        
-        set((state) => ({
-          taskTimers: {
-            ...state.taskTimers,
-            [taskId]: taskTimer
-          }
-        }))
-        
-        return taskTimer
-      } catch (error) {
-        console.error('Failed to load task timer:', error)
-        return { hours: 0, minutes: 0, seconds: 0 }
       }
     },
     
@@ -240,18 +247,6 @@ const useTimerStore = create(
     timerToSeconds: (timer) => {
       return timer.hours * 3600 + timer.minutes * 60 + timer.seconds
     },
-
-    // Get duration of current session only (not total accumulated time)
-    getSessionDuration: () => {
-      const { sessionStartTime } = get()
-      if (!sessionStartTime) return 0
-      
-      const now = new Date()
-      const sessionDurationMs = now - new Date(sessionStartTime)
-      const sessionDurationSeconds = Math.floor(sessionDurationMs / 1000)
-      
-      return sessionDurationSeconds
-    },
     
     // Format timer for display
     formatTime: (customTimer = null) => {
@@ -261,8 +256,12 @@ const useTimerStore = create(
     
     // Format task timer for display
     formatTaskTime: (taskId) => {
-      const taskTimer = get().getTaskTimer(taskId)
-      return get().formatTime(taskTimer)
+      // For simplified approach, just use current timer if it's the active task
+      const { activeTaskId, timer } = get()
+      if (activeTaskId === taskId) {
+        return get().formatTime(timer)
+      }
+      return '00:00:00'
     },
     
     // Get total minutes
@@ -271,30 +270,61 @@ const useTimerStore = create(
       return timerToUse.hours * 60 + timerToUse.minutes
     },
     
-    // Get total minutes for task
-    getTaskTotalMinutes: (taskId) => {
-      const taskTimer = get().getTaskTimer(taskId)
-      return get().getTotalMinutes(taskTimer)
+    // Initialize app and recover crashed timers
+    initializeApp: async () => {
+      try {
+        console.log('Initializing timer store and checking for crashed timers...')
+        
+        // Find any tasks with active timers (lastStartTime != null)
+        const activeTasks = await window.db.getTasksWithActiveTimers()
+        
+        if (activeTasks.length > 0) {
+          console.log(`Found ${activeTasks.length} tasks with active timers, recovering...`)
+          
+          for (const task of activeTasks) {
+            const now = new Date()
+            const crashedDuration = Math.floor((now - new Date(task.lastStartTime)) / 1000)
+            
+            console.log(`Recovering ${crashedDuration} seconds for task: ${task.title}`)
+            
+            // Add crashed time to accumulated time and clear active state
+            await window.db.updateTask(task.id, {
+              timeSpent: (task.timeSpent || 0) + crashedDuration,
+              lastStartTime: null,
+              updatedAt: now
+            })
+          }
+          
+          console.log('Timer recovery completed')
+        } else {
+          console.log('No active timers found, no recovery needed')
+        }
+      } catch (error) {
+        console.error('Failed to initialize timer store:', error)
+      }
     },
     
     // Cleanup on unmount
     cleanup: async () => {
       const { intervalId, isRunning } = get()
       
-      // End current session if running
+      // Save current session if running
       if (isRunning) {
-        await get().endCurrentSession()
+        await get().pauseForTask()
       }
       
-      // Clear interval
+      // Clear both local and global intervals
       if (intervalId) {
         clearInterval(intervalId)
+      }
+      if (globalIntervalId) {
+        clearInterval(globalIntervalId)
+        globalIntervalId = null
       }
       
       set({
         intervalId: null,
         isRunning: false,
-        activeSessions: {},
         activeTaskId: null,
         sessionStartTime: null
       })
@@ -302,57 +332,51 @@ const useTimerStore = create(
     
     // Periodic save (call this every 30 seconds when timer is running)
     periodicSave: async () => {
-      const { activeTaskId, activeSessions, isRunning } = get()
-      if (!isRunning || !activeTaskId || !activeSessions[activeTaskId]) return
+      const { activeTaskId, sessionStartTime, isRunning } = get()
+      if (!isRunning || !activeTaskId || !sessionStartTime) return
       
       try {
-        const sessionId = activeSessions[activeTaskId]
-        const sessionDuration = get().getSessionDuration()
+        const now = new Date()
+        const sessionDuration = Math.floor((now - sessionStartTime) / 1000)
         
-        // Update session with current session duration (but don't end it)
-        await window.db.updateTimeSession(sessionId, { duration: sessionDuration })
+        // Get current task
+        const task = await window.db.getTask(activeTaskId)
+        if (!task) return
+        
+        const newTimeSpent = (task.timeSpent || 0) + sessionDuration
+        
+        // Update task with current accumulated time and reset start time
+        await window.db.updateTask(activeTaskId, {
+          timeSpent: newTimeSpent,
+          lastStartTime: now, // Reset start time to now
+          updatedAt: now
+        })
+        
+        // Reset local session start time
+        set({ sessionStartTime: now })
+        
+        console.log(`Periodic save: ${sessionDuration} seconds added to task ${activeTaskId}`)
+        
       } catch (error) {
         console.error('Failed to save session progress:', error)
       }
     },
 
-    // Debug methods
-    debugTaskSessions: async (taskId) => {
-      try {
-        const sessions = await window.db.getAllTaskSessions(taskId)
-        console.log(`=== DEBUG: All sessions for task ${taskId} ===`)
-        sessions.forEach((session, index) => {
-          console.log(`Session ${index + 1}:`, {
-            id: session.id,
-            startTime: session.startTime,
-            endTime: session.endTime,
-            duration: session.duration,
-            createdAt: session.createdAt
-          })
-        })
-        const totalTime = await window.db.getTaskTotalTime(taskId)
-        console.log(`Total calculated time: ${totalTime} seconds`)
-        return sessions
-      } catch (error) {
-        console.error('Failed to debug task sessions:', error)
-        return []
-      }
+    // Check if task timer is active
+    isTaskTimerActive: (task) => {
+      return task && task.lastStartTime !== null
     },
 
-    clearTaskData: async (taskId) => {
+    // Load task timer from database (for display purposes)
+    loadTaskTimer: async (taskId) => {
       try {
-        await window.db.clearTaskTimeSessions(taskId)
-        set((state) => {
-          const newTaskTimers = { ...state.taskTimers }
-          delete newTaskTimers[taskId]
-          return {
-            taskTimers: newTaskTimers,
-            timer: state.activeTaskId === taskId ? { hours: 0, minutes: 0, seconds: 0 } : state.timer,
-            activeTaskId: state.activeTaskId === taskId ? null : state.activeTaskId
-          }
-        })
+        const task = await window.db.getTask(taskId)
+        if (!task) return { hours: 0, minutes: 0, seconds: 0 }
+        
+        return get().secondsToTimer(task.timeSpent || 0)
       } catch (error) {
-        console.error('Failed to clear task data:', error)
+        console.error('Failed to load task timer:', error)
+        return { hours: 0, minutes: 0, seconds: 0 }
       }
     }
   }))

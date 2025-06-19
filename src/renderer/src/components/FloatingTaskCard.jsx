@@ -406,7 +406,7 @@ const FloatingTaskCard = ({
                         if (currentUser) {
                           await switchToTask(task.id, currentUser.id)
                         }
-                        onActivateTask(task.id)
+                        onActivateTask(task)
                       }}
                       className="text-muted-foreground transition-colors hover:text-foreground"
                       whileHover={{ scale: 1.1 }}
@@ -491,17 +491,29 @@ const FloatingTaskCard = ({
                 </motion.div>
               ) : (
                 <div key="badges" className="flex items-center gap-2">
-                  {/* Priority Badge */}
-                  <div
-                    className={`${getPriorityColor(task.priority)} h-3 w-3 rounded-full`}
-                    title={`Priority: ${task.priority}`}
-                  />
-                  {/* Task Group Badge */}
-                  <div
-                    className={`${task.taskGroup?.color || 'bg-gray-500'} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
-                  >
-                    {task.taskGroup?.name || 'T'}
-                  </div>
+                  {isCompleted ? (
+                    /* Time Spent for completed tasks */
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {task.timeSpent ?
+                        `${Math.floor(task.timeSpent / 60).toString().padStart(2, '0')}:${(task.timeSpent % 60).toString().padStart(2, '0')}`
+                        : '00:00'
+                      }
+                    </div>
+                  ) : (
+                    <>
+                      {/* Priority Badge */}
+                      <div
+                        className={`${getPriorityColor(task.priority)} h-3 w-3 rounded-full`}
+                        title={`Priority: ${task.priority}`}
+                      />
+                      {/* Task Group Badge */}
+                      <div
+                        className={`${task.taskGroup?.color || 'bg-gray-500'} h-4 w-4 rounded text-xs font-bold text-white flex items-center justify-center`}
+                      >
+                        {task.taskGroup?.name || 'T'}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </AnimatePresence>

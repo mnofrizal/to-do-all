@@ -63,6 +63,14 @@ ipcMain.handle('create-list', async (_, data) => {
   return await prisma.list.create({ data })
 })
 
+ipcMain.handle('update-list', async (_, { id, data }) => {
+  return await prisma.list.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-list', async (_, id) => {
+  return await prisma.list.delete({ where: { id } })
+})
+
 ipcMain.handle('get-tasks', async (_, listId) => {
   return await prisma.task.findMany({ where: { listId }, include: { subtasks: true } })
 })
@@ -91,76 +99,58 @@ ipcMain.handle('delete-subtask', async (_, id) => {
   return await prisma.subtask.delete({ where: { id } })
 })
 
-// TimeSession handlers
-ipcMain.handle('create-time-session', async (_, data) => {
-  return await prisma.timeSession.create({ data })
-})
-
-ipcMain.handle('update-time-session', async (_, { id, data }) => {
-  return await prisma.timeSession.update({ where: { id }, data })
-})
-
-ipcMain.handle('end-time-session', async (_, { id, endTime, duration }) => {
-  return await prisma.timeSession.update({
-    where: { id },
-    data: { endTime, duration }
-  })
-})
-
-ipcMain.handle('get-task-time-sessions', async (_, taskId) => {
-  return await prisma.timeSession.findMany({
-    where: { taskId },
-    orderBy: { createdAt: 'desc' }
-  })
-})
-
+// Simplified Timer handlers (no TimeSession creation)
 ipcMain.handle('get-task-total-time', async (_, taskId) => {
   try {
-    const sessions = await prisma.timeSession.findMany({
-      where: {
-        taskId,
-        duration: { not: null }, // Only completed sessions
-        endTime: { not: null }   // Only properly ended sessions
-      },
-      select: { duration: true }
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { timeSpent: true }
     })
     
-    const totalSeconds = sessions.reduce((total, session) => {
-      return total + (session.duration || 0)
-    }, 0)
-    
-    return totalSeconds
+    return task?.timeSpent || 0
   } catch (error) {
     console.error('Error getting task total time:', error)
     return 0
   }
 })
 
-ipcMain.handle('get-active-time-session', async (_, { taskId, userId }) => {
-  return await prisma.timeSession.findFirst({
-    where: {
-      taskId,
-      userId,
-      endTime: null // Active session has no end time
-    },
+ipcMain.handle('get-tasks-with-active-timers', async () => {
+  try {
+    return await prisma.task.findMany({
+      where: {
+        lastStartTime: { not: null }
+      },
+      select: {
+        id: true,
+        title: true,
+        timeSpent: true,
+        lastStartTime: true
+      }
+    })
+  } catch (error) {
+    console.error('Error getting tasks with active timers:', error)
+    return []
+  }
+})
+
+ipcMain.handle('get-task', async (_, taskId) => {
+  try {
+    return await prisma.task.findUnique({
+      where: { id: taskId },
+      include: { subtasks: true }
+    })
+  } catch (error) {
+    console.error('Error getting task:', error)
+    return null
+  }
+})
+
+// Keep legacy TimeSession handlers for historical data (optional)
+ipcMain.handle('get-task-time-sessions', async (_, taskId) => {
+  return await prisma.timeSession.findMany({
+    where: { taskId },
     orderBy: { createdAt: 'desc' }
   })
-})
-
-ipcMain.handle('delete-time-session', async (_, id) => {
-  return await prisma.timeSession.delete({ where: { id } })
-})
-
-ipcMain.handle('clear-task-time-sessions', async (_, taskId) => {
-  try {
-    const result = await prisma.timeSession.deleteMany({
-      where: { taskId }
-    })
-    return result
-  } catch (error) {
-    console.error('Error clearing task sessions:', error)
-    throw error
-  }
 })
 
 ipcMain.handle('get-all-task-sessions', async (_, taskId) => {
@@ -173,6 +163,149 @@ ipcMain.handle('get-all-task-sessions', async (_, taskId) => {
   } catch (error) {
     console.error('Error getting all task sessions:', error)
     return []
+  }
+})
+
+// Global search handler
+ipcMain.handle('global-search', async (_, query) => {
+  try {
+    if (!query || query.trim().length === 0) {
+      return {
+        users: [],
+        workspaces: [],
+        lists: [],
+        tasks: [],
+        subtasks: []
+      }
+    }
+
+    // Search users
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { username: { contains: query } },
+          { name: { contains: query } },
+          { email: { contains: query } }
+        ]
+      },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        email: true,
+        avatar: true
+      }
+    })
+
+    // Search workspaces
+    const workspaces = await prisma.workspace.findMany({
+      where: {
+        name: { contains: query }
+      },
+      include: {
+        user: {
+          select: { username: true, name: true }
+        }
+      }
+    })
+
+    // Search lists
+    const lists = await prisma.list.findMany({
+      where: {
+        name: { contains: query }
+      },
+      select: {
+        id: true,
+        name: true,
+        icon: true,
+        iconColor: true,
+        workspace: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    })
+
+    // Search tasks
+    const tasks = await prisma.task.findMany({
+      where: {
+        OR: [
+          { title: { contains: query } },
+          { notes: { contains: query } }
+        ]
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        notes: true,
+        estimatedTime: true,
+        listId: true,
+        list: {
+          select: {
+            id: true,
+            name: true,
+            workspace: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        },
+        subtasks: true
+      }
+    })
+
+    // Search subtasks
+    const subtasks = await prisma.subtask.findMany({
+      where: {
+        title: { contains: query }
+      },
+      select: {
+        id: true,
+        title: true,
+        completed: true,
+        task: {
+          select: {
+            id: true,
+            title: true,
+            list: {
+              select: {
+                id: true,
+                name: true,
+                workspace: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    return {
+      users,
+      workspaces,
+      lists,
+      tasks,
+      subtasks
+    }
+  } catch (error) {
+    console.error('Global search error:', error)
+    return {
+      users: [],
+      workspaces: [],
+      lists: [],
+      tasks: [],
+      subtasks: []
+    }
   }
 })
 
