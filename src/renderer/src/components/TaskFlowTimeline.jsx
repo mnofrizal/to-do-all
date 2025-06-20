@@ -496,6 +496,13 @@ function TaskFlowTimelineInner({ selectedList }) {
       const sourceNode = nodes.find(n => n.id === params.source);
       const targetNode = nodes.find(n => n.id === params.target);
       
+      // Check for invalid task-to-task orange handle connections
+      // Only block if BOTH nodes are tasks AND using orange handles
+      const isTaskToTaskOrangeConnection =
+        sourceNode && targetNode &&
+        sourceNode.type === 'customTask' && targetNode.type === 'customTask' &&
+        (params.sourceHandle === 'attachment-right' || params.sourceHandle === 'attachment-left');
+      
       // Handle standalone subflow connection (both directions)
       if ((sourceNode && sourceNode.type === 'customSubflow' && !sourceNode.data.taskId &&
            targetNode && targetNode.type === 'customTask') ||
@@ -559,18 +566,187 @@ function TaskFlowTimelineInner({ selectedList }) {
       // Prevent invalid connections:
       // 1. Orange handles (attachment) should not connect to blue handles (task flow)
       // 2. Blue handles (task flow) should not connect to orange handles (attachment)
-      // 3. Finished tasks should not be able to create new outgoing task flow connections
+      // 3. Orange handles should not connect between task nodes (task-to-task orange connections)
+      // 4. Finished tasks should not be able to create new outgoing task flow connections
       const isInvalidConnection =
-        (params.sourceHandle === 'attachment-right' && (params.targetHandle === 'top' || !params.targetHandle)) ||
+        (params.sourceHandle === 'attachment-right' && params.targetHandle === 'top') ||
         (params.sourceHandle === 'bottom' && params.targetHandle === 'attachment-left') ||
-        (params.targetHandle === 'attachment-left' && (params.sourceHandle === 'bottom' || !params.sourceHandle)) ||
+        (params.targetHandle === 'attachment-left' && params.sourceHandle === 'bottom') ||
         (params.targetHandle === 'top' && params.sourceHandle === 'attachment-right') ||
+        // NEW: Prevent orange handle connections between task nodes
+        isTaskToTaskOrangeConnection ||
         // Prevent connections from finished tasks' bottom handle
         (params.sourceHandle === 'bottom' && sourceNode && sourceNode.data.isFinished);
       
       // Block invalid connections
       if (isInvalidConnection) {
         return;
+      }
+      
+      // Handle attachment-to-task connections with subflow creation logic
+      if (isAttachmentConnection && sourceNode && targetNode &&
+          ((sourceNode.type === 'customAttachment' && targetNode.type === 'customTask') ||
+           (sourceNode.type === 'customTask' && targetNode.type === 'customAttachment'))) {
+        
+        // Determine which is the task and which is the attachment
+        const taskNode = sourceNode.type === 'customTask' ? sourceNode : targetNode;
+        const attachmentNode = sourceNode.type === 'customAttachment' ? sourceNode : targetNode;
+        
+        // Skip if attachment is already in a subflow
+        if (attachmentNode.parentNode) {
+          return;
+        }
+        
+        // Count existing attachments connected to this task
+        const existingAttachments = edges.filter(edge =>
+          edge.source === taskNode.id && edge.sourceHandle === 'attachment-right'
+        ).length;
+        
+        const existingSubflow = nodes.find(node =>
+          node.type === 'customSubflow' && node.data.taskId === taskNode.id
+        );
+        
+        if (existingAttachments === 0) {
+          // First attachment - use basic line connection
+          const newEdge = {
+            id: `attachment-${taskNode.id}-${attachmentNode.id}`,
+            source: taskNode.id,
+            target: attachmentNode.id,
+            sourceHandle: 'attachment-right',
+            targetHandle: null,
+            type: 'default',
+            style: { stroke: '#f97316', strokeWidth: 2 },
+            animated: false
+          };
+          
+          // Position attachment next to task
+          setNodes((currentNodes) =>
+            currentNodes.map(node =>
+              node.id === attachmentNode.id
+                ? {
+                    ...node,
+                    position: {
+                      x: taskNode.position.x + 280,
+                      y: taskNode.position.y
+                    }
+                  }
+                : node
+            )
+          );
+          
+          setEdges((eds) => addEdge(newEdge, eds));
+          
+        } else if (existingAttachments === 1 && !existingSubflow) {
+          // Second attachment - convert to subflow system
+          const existingAttachmentEdge = edges.find(edge =>
+            edge.source === taskNode.id && edge.sourceHandle === 'attachment-right'
+          );
+          const existingAttachmentNode = nodes.find(node =>
+            node.id === existingAttachmentEdge?.target
+          );
+          
+          if (existingAttachmentNode) {
+            const subflowId = String(nodeId);
+            const { width, height } = calculateSubflowLayout(2);
+            
+            const newSubflowNode = {
+              id: subflowId,
+              type: 'customSubflow',
+              data: {
+                label: `${taskNode.data.label} Attachments`,
+                taskId: taskNode.id,
+                attachmentCount: 2,
+                backgroundColor: 'rgba(196, 181, 253, 0.15)',
+              },
+              position: {
+                x: taskNode.position.x + 280,
+                y: taskNode.position.y - 20,
+              },
+              style: { width, height }
+            };
+            
+            // Move existing attachment into subflow
+            const updatedExistingAttachment = {
+              ...existingAttachmentNode,
+              position: getAttachmentPositionInSubflow(0, 2),
+              parentNode: subflowId,
+              extent: 'parent'
+            };
+            
+            // Move new attachment into subflow
+            const updatedNewAttachment = {
+              ...attachmentNode,
+              position: getAttachmentPositionInSubflow(1, 2),
+              parentNode: subflowId,
+              extent: 'parent'
+            };
+            
+            // Update nodes
+            setNodes(currentNodes => [
+              ...currentNodes.filter(n => n.id !== existingAttachmentNode.id && n.id !== attachmentNode.id),
+              newSubflowNode,
+              updatedExistingAttachment,
+              updatedNewAttachment
+            ]);
+            
+            // Update edges - remove old connection, add subflow connection
+            setEdges(currentEdges => [
+              ...currentEdges.filter(e => e.id !== existingAttachmentEdge.id),
+              {
+                id: `subflow-${taskNode.id}-${subflowId}`,
+                source: taskNode.id,
+                target: subflowId,
+                sourceHandle: 'attachment-right',
+                targetHandle: null,
+                type: 'default',
+                style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                animated: false
+              }
+            ]);
+            
+            setNodeId((id) => id + 1);
+          }
+          
+        } else if (existingSubflow) {
+          // Add to existing subflow (3+ attachments)
+          const currentAttachments = nodes.filter(node =>
+            node.parentNode === existingSubflow.id && node.type === 'customAttachment'
+          );
+          
+          const newAttachmentCount = currentAttachments.length + 1;
+          const { width, height } = calculateSubflowLayout(newAttachmentCount);
+          
+          // Move new attachment into subflow
+          const updatedNewAttachment = {
+            ...attachmentNode,
+            position: getAttachmentPositionInSubflow(currentAttachments.length, newAttachmentCount),
+            parentNode: existingSubflow.id,
+            extent: 'parent'
+          };
+          
+          // Recalculate positions for ALL attachments in the subflow
+          const updatedAttachments = currentAttachments.map((attachment, index) => ({
+            ...attachment,
+            position: getAttachmentPositionInSubflow(index, newAttachmentCount)
+          }));
+          
+          setNodes((nds) => [
+            ...nds.filter(node =>
+              node.id !== existingSubflow.id &&
+              node.id !== attachmentNode.id &&
+              !currentAttachments.some(att => att.id === node.id)
+            ),
+            {
+              ...existingSubflow,
+              data: { ...existingSubflow.data, attachmentCount: newAttachmentCount },
+              style: { width, height }
+            },
+            ...updatedAttachments,
+            updatedNewAttachment
+          ]);
+        }
+        
+        return; // Exit early after handling attachment connection
       }
       
       const edgeStyle = isAttachmentConnection ?
@@ -606,7 +782,7 @@ function TaskFlowTimelineInner({ selectedList }) {
         animated: shouldAnimate
       }, eds));
     },
-    [setEdges, nodes, setNodes]
+    [setEdges, nodes, setNodes, nodeId, setNodeId, calculateSubflowLayout, getAttachmentPositionInSubflow]
   );
 
   // Drag-and-drop logic with improved coordinate calculation
