@@ -246,7 +246,7 @@ const CustomSubflowNode = ({ data, selected }) => {
   );
 };
 
-function TaskFlowTimelineInner() {
+function TaskFlowTimelineInner({ selectedList }) {
   // Memoize nodeTypes to prevent recreation
   const nodeTypes = useMemo(() => ({
     customTask: CustomTaskNode,
@@ -255,6 +255,11 @@ function TaskFlowTimelineInner() {
   }), []);
   const { getIntersectingNodes } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  
+  // Add state for timeline data
+  const [timelineTasks, setTimelineTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   
   // Context menu state
   const [contextMenu, setContextMenu] = useState(null);
@@ -357,63 +362,133 @@ function TaskFlowTimelineInner() {
     { id: 'generic', name: 'File', icon: File, iconName: 'File', color: 'bg-slate-500', extension: '.file' },
   ];
 
-  // Get all tasks grouped by column
-  const columns = getDefaultTaskColumns();
+  // Add state for all tasks (for task library)
+  const [allTasks, setAllTasks] = useState([]);
+
+  // Fetch tasks from database
+  useEffect(() => {
+    if (selectedList) {
+      const fetchTimelineTasks = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const tasks = await window.db.getTasks(selectedList.id);
+          
+          // Store all tasks for the task library
+          setAllTasks(tasks);
+          
+          // Filter done tasks for timeline display
+          const doneTasks = tasks
+            .filter(task => task.status === 'done' && task.completedAt)
+            .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+          
+          setTimelineTasks(doneTasks);
+          
+          // Create initial nodes from done tasks
+          const initialNodes = doneTasks.map((task, index) => ({
+            id: String(index + 1),
+            type: 'customTask',
+            data: {
+              label: task.title,
+              taskGroup: task.taskGroup,
+              estimate: task.estimate,
+              priority: task.priority,
+              completedAt: task.completedAt,
+              taskId: task.id,
+              isFinished: false
+            },
+            position: { x: 300, y: 100 + index * 150 },
+          }));
+
+          const initialEdges = [];
+          // Auto-connect done tasks in sequence
+          for (let i = 0; i < initialNodes.length - 1; i++) {
+            initialEdges.push({
+              id: `e${i + 1}-${i + 2}`,
+              source: String(i + 1),
+              target: String(i + 2),
+              sourceHandle: 'bottom',
+              targetHandle: 'top',
+              type: 'default',
+              style: { stroke: '#3b82f6', strokeWidth: 2 },
+              animated: false
+            });
+          }
+
+          setNodes(initialNodes);
+          setEdges(initialEdges);
+          setNodeId(initialNodes.length + 1);
+          
+          // Track which tasks are already in nodes
+          const taskIds = new Set(doneTasks.map(task => task.id));
+          setTasksInNodes(taskIds);
+          
+        } catch (error) {
+          console.error('Failed to fetch timeline tasks:', error);
+          setError(error.message);
+          setAllTasks([]);
+          setTimelineTasks([]);
+          setNodes([]);
+          setEdges([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      fetchTimelineTasks();
+    } else {
+      // Clear data when no list selected
+      setAllTasks([]);
+      setTimelineTasks([]);
+      setNodes([]);
+      setEdges([]);
+      setTasksInNodes(new Set());
+    }
+  }, [selectedList]);
+
+  // Get all tasks grouped by column with dynamic data
+  const columns = useMemo(() => {
+    const defaultColumns = getDefaultTaskColumns();
+    
+    if (selectedList && allTasks.length > 0) {
+      // Group all tasks by their status
+      allTasks.forEach(task => {
+        let targetColumnId = task.status;
+        
+        // Map task status to correct column
+        if (task.status === 'done') {
+          targetColumnId = 'done';
+        } else if (task.status === 'backlog') {
+          targetColumnId = 'backlog';
+        } else if (task.scheduledForToday === true && task.status !== 'done') {
+          targetColumnId = 'today';
+        } else if (task.status === 'inprogress') {
+          targetColumnId = 'thisweek';
+        } else {
+          targetColumnId = 'backlog'; // Default fallback
+        }
+        
+        const column = defaultColumns.find(c => c.id === targetColumnId);
+        if (column) {
+          // Clear existing tasks first to avoid duplicates
+          if (!column.tasksCleared) {
+            column.tasks = [];
+            column.tasksCleared = true;
+          }
+          column.tasks.push(task);
+        }
+      });
+    }
+    
+    return defaultColumns;
+  }, [selectedList, allTasks]);
+
   const filteredColumns = columns.map(col => ({
     ...col,
     tasks: col.tasks.filter(task =>
       task.title.toLowerCase().includes(search.toLowerCase())
     ),
   }));
-
-  // Initialize nodes from done tasks, ordered by completedAt
-  useEffect(() => {
-    const doneColumn = columns.find(col => col.id === 'done');
-    if (doneColumn && doneColumn.tasks.length > 0) {
-      // Sort done tasks by completedAt (oldest first for timeline order)
-      const sortedDoneTasks = [...doneColumn.tasks].sort((a, b) =>
-        new Date(a.completedAt) - new Date(b.completedAt)
-      );
-      
-      const initialNodes = sortedDoneTasks.map((task, index) => ({
-        id: String(index + 1),
-        type: 'customTask',
-        data: {
-          label: task.title,
-          taskGroup: task.taskGroup,
-          estimate: task.estimate,
-          priority: task.priority,
-          completedAt: task.completedAt,
-          taskId: task.id,
-          isFinished: false
-        },
-        position: { x: 300, y: 100 + index * 150 },
-      }));
-
-      const initialEdges = [];
-      // Auto-connect done tasks in sequence
-      for (let i = 0; i < initialNodes.length - 1; i++) {
-        initialEdges.push({
-          id: `e${i + 1}-${i + 2}`,
-          source: String(i + 1),
-          target: String(i + 2),
-          sourceHandle: 'bottom', // Explicitly use bottom handle
-          targetHandle: 'top', // Explicitly use top handle
-          type: 'default', // Use straight line instead of default curved
-          style: { stroke: '#3b82f6', strokeWidth: 2 }, // Blue for task flow
-          animated: false
-        });
-      }
-
-      setNodes(initialNodes);
-      setEdges(initialEdges);
-      setNodeId(initialNodes.length + 1);
-      
-      // Track which tasks are already in nodes
-      const taskIds = new Set(sortedDoneTasks.map(task => task.id));
-      setTasksInNodes(taskIds);
-    }
-  }, []);
 
   const onConnect = useCallback(
     (params) => {
@@ -2205,6 +2280,54 @@ function TaskFlowTimelineInner() {
     setNodes(updatedNodes);
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center" style={{ height: 'calc(100vh - 122px)', minHeight: 0, minWidth: 0 }}>
+        <div className="text-center">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+          <p className="text-sm text-muted-foreground">Loading timeline tasks...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center" style={{ height: 'calc(100vh - 122px)', minHeight: 0, minWidth: 0 }}>
+        <div className="text-center">
+          <div className="mb-4 text-red-500">
+            <X className="mx-auto h-12 w-12" />
+          </div>
+          <h3 className="mb-2 text-lg font-semibold text-foreground">Failed to Load Timeline</h3>
+          <p className="mb-4 text-sm text-muted-foreground">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="rounded bg-blue-500 px-4 py-2 text-sm text-white hover:bg-blue-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state when no list is selected
+  if (!selectedList) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center" style={{ height: 'calc(100vh - 122px)', minHeight: 0, minWidth: 0 }}>
+        <div className="text-center">
+          <div className="mb-4 text-muted-foreground">
+            <List className="mx-auto h-12 w-12" />
+          </div>
+          <h3 className="mb-2 text-lg font-semibold text-foreground">No List Selected</h3>
+          <p className="text-sm text-muted-foreground">Please select a task list to view the timeline</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full flex-col" style={{ height: 'calc(100vh - 122px)', minHeight: 0, minWidth: 0 }}>
       {/* Top Bar */}
@@ -2418,7 +2541,12 @@ function TaskFlowTimelineInner() {
           <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2 dark:bg-zinc-800">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Zap className="h-4 w-4" />
-              Drag tasks from the library to create your timeline flow
+              {allTasks.length === 0
+                ? "No tasks found in this list. Create some tasks to get started."
+                : timelineTasks.length === 0
+                ? "No completed tasks found. Complete some tasks to see them in the timeline."
+                : "Drag tasks from the library to create your timeline flow"
+              }
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{nodes.length} blocks</span>
@@ -2918,10 +3046,10 @@ function TaskFlowTimelineInner() {
 }
 
 // Wrapper component with ReactFlowProvider
-function TaskFlowTimeline() {
+function TaskFlowTimeline({ selectedList }) {
   return (
     <ReactFlowProvider>
-      <TaskFlowTimelineInner />
+      <TaskFlowTimelineInner selectedList={selectedList} />
     </ReactFlowProvider>
   );
 }

@@ -28,6 +28,7 @@ import { Progress } from './ui/progress'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useTheme } from '../contexts/ThemeContext'
 import TaskFlowTimeline from './TaskFlowTimeline'
+import ErrorBoundary from './ErrorBoundary'
 import ApiTestPanel from './ApiTestPanel' // Import the new component
 import DayWithLabel from './DayWithLabel' // Import the new component
 import KanbanColumn from './KanbanColumn' // Import the new component
@@ -1280,7 +1281,9 @@ const TaskProgress = ({ onBack, activeView = 'kanban', onTaskClick, onLeapIt, se
          <div className="flex h-full px-0 pt-6">
            
            <div className="flex-1 border border-border bg-card" style={{ minHeight: 600 }}>
-             <TaskFlowTimeline />
+             <ErrorBoundary>
+               <TaskFlowTimeline selectedList={selectedList} />
+             </ErrorBoundary>
            </div>
          </div>
        )

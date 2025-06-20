@@ -401,19 +401,26 @@ ipcMain.on('window-resize-floating', () => {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     
-    // Calculate floating window size and position
+    // Calculate floating window size and position with bounds checking
     const windowHeight = Math.floor(screenHeight * 0.96)
-    const targetX = Math.floor(screenWidth * 0.005)
-    const targetY = Math.floor(screenHeight * 0.035)
+    const targetX = Math.max(0, Math.floor(screenWidth * 0.005))
+    const targetY = Math.max(0, Math.floor(screenHeight * 0.035))
+    const floatingWidth = 330
+    
+    // Ensure floating window fits within screen
+    const maxX = Math.max(0, screenWidth - floatingWidth)
+    const maxY = Math.max(0, screenHeight - windowHeight)
+    const finalX = Math.min(targetX, maxX)
+    const finalY = Math.min(targetY, maxY)
     
     // Animate to floating size
     const currentBounds = mainWindow.getBounds()
     const animationSteps = 30
     const stepDuration = 10
     
-    const deltaX = (targetX - currentBounds.x) / animationSteps
-    const deltaY = (targetY - currentBounds.y) / animationSteps
-    const deltaWidth = (330 - currentBounds.width) / animationSteps
+    const deltaX = (finalX - currentBounds.x) / animationSteps
+    const deltaY = (finalY - currentBounds.y) / animationSteps
+    const deltaWidth = (floatingWidth - currentBounds.width) / animationSteps
     const deltaHeight = (windowHeight - currentBounds.height) / animationSteps
     
     let step = 0
@@ -423,14 +430,26 @@ ipcMain.on('window-resize-floating', () => {
         const progress = step / animationSteps
         const easeProgress = 1 - Math.pow(1 - progress, 3)
         
+        const newX = Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress))
+        const newY = Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress))
+        const newWidth = Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress))
+        const newHeight = Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+        
+        // Validate bounds before setting
         const newBounds = {
-          x: Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress)),
-          y: Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress)),
-          width: Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress)),
-          height: Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+          x: Math.max(0, Math.min(newX, screenWidth - newWidth)),
+          y: Math.max(0, Math.min(newY, screenHeight - newHeight)),
+          width: Math.max(200, Math.min(newWidth, screenWidth)),
+          height: Math.max(150, Math.min(newHeight, screenHeight))
         }
         
-        mainWindow.setBounds(newBounds, false)
+        // Additional validation to ensure all values are finite numbers
+        if (isFinite(newBounds.x) && isFinite(newBounds.y) &&
+            isFinite(newBounds.width) && isFinite(newBounds.height) &&
+            newBounds.width > 0 && newBounds.height > 0) {
+          mainWindow.setBounds(newBounds, false)
+        }
+        
         step++
         
         if (step <= animationSteps) {
@@ -449,9 +468,9 @@ ipcMain.on('window-resize-focus', () => {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     
-    // Calculate focus window size
+    // Calculate focus window size with minimum height
     const focusWidth = 300
-    const focusHeight = Math.floor(screenHeight * 0.04) // 4% of screen height
+    const focusHeight = Math.max(50, Math.floor(screenHeight * 0.04)) // 4% of screen height, minimum 50px
     
     // Use saved position or default to center
     let targetX, targetY
@@ -464,8 +483,8 @@ ipcMain.on('window-resize-focus', () => {
       targetY = Math.max(0, Math.min(targetY, screenHeight - focusHeight))
     } else {
       // Default to center if no saved position
-      targetX = Math.floor((screenWidth - focusWidth) / 2)
-      targetY = Math.floor((screenHeight - focusHeight) / 2)
+      targetX = Math.max(0, Math.floor((screenWidth - focusWidth) / 2))
+      targetY = Math.max(0, Math.floor((screenHeight - focusHeight) / 2))
     }
     
     // Animate to focus size and position
@@ -485,14 +504,26 @@ ipcMain.on('window-resize-focus', () => {
         const progress = step / animationSteps
         const easeProgress = 1 - Math.pow(1 - progress, 3)
         
+        const newX = Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress))
+        const newY = Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress))
+        const newWidth = Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress))
+        const newHeight = Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+        
+        // Validate bounds before setting
         const newBounds = {
-          x: Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress)),
-          y: Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress)),
-          width: Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress)),
-          height: Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+          x: Math.max(0, Math.min(newX, screenWidth - newWidth)),
+          y: Math.max(0, Math.min(newY, screenHeight - newHeight)),
+          width: Math.max(200, Math.min(newWidth, screenWidth)),
+          height: Math.max(50, Math.min(newHeight, screenHeight))
         }
         
-        mainWindow.setBounds(newBounds, false)
+        // Additional validation to ensure all values are finite numbers
+        if (isFinite(newBounds.x) && isFinite(newBounds.y) &&
+            isFinite(newBounds.width) && isFinite(newBounds.height) &&
+            newBounds.width > 0 && newBounds.height > 0) {
+          mainWindow.setBounds(newBounds, false)
+        }
+        
         step++
         
         if (step <= animationSteps) {
@@ -515,11 +546,15 @@ ipcMain.on('window-resize-normal', () => {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     
-    // Default main window size and center position
-    const defaultWidth = 1920
-    const defaultHeight = 1080
-    const centerX = Math.floor((screenWidth - defaultWidth) / 2)
-    const centerY = Math.floor((screenHeight - defaultHeight) / 2)
+    // Use more reasonable default window size that fits within screen bounds
+    const maxWidth = Math.min(1200, screenWidth * 0.8)
+    const maxHeight = Math.min(800, screenHeight * 0.8)
+    const defaultWidth = Math.max(900, maxWidth)
+    const defaultHeight = Math.max(670, maxHeight)
+    
+    // Calculate center position with bounds checking
+    const centerX = Math.max(0, Math.floor((screenWidth - defaultWidth) / 2))
+    const centerY = Math.max(0, Math.floor((screenHeight - defaultHeight) / 2))
     
     // Animate back to normal size
     const currentBounds = mainWindow.getBounds()
@@ -538,14 +573,26 @@ ipcMain.on('window-resize-normal', () => {
         const progress = step / animationSteps
         const easeProgress = 1 - Math.pow(1 - progress, 3)
         
+        const newX = Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress))
+        const newY = Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress))
+        const newWidth = Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress))
+        const newHeight = Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+        
+        // Validate bounds before setting
         const newBounds = {
-          x: Math.round(currentBounds.x + (deltaX * animationSteps * easeProgress)),
-          y: Math.round(currentBounds.y + (deltaY * animationSteps * easeProgress)),
-          width: Math.round(currentBounds.width + (deltaWidth * animationSteps * easeProgress)),
-          height: Math.round(currentBounds.height + (deltaHeight * animationSteps * easeProgress))
+          x: Math.max(0, Math.min(newX, screenWidth - newWidth)),
+          y: Math.max(0, Math.min(newY, screenHeight - newHeight)),
+          width: Math.max(300, Math.min(newWidth, screenWidth)),
+          height: Math.max(200, Math.min(newHeight, screenHeight))
         }
         
-        mainWindow.setBounds(newBounds, false)
+        // Additional validation to ensure all values are finite numbers
+        if (isFinite(newBounds.x) && isFinite(newBounds.y) &&
+            isFinite(newBounds.width) && isFinite(newBounds.height) &&
+            newBounds.width > 0 && newBounds.height > 0) {
+          mainWindow.setBounds(newBounds, false)
+        }
+        
         step++
         
         if (step <= animationSteps) {

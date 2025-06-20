@@ -323,6 +323,29 @@ model Workspace {
   sharedWith   SharedWorkspace[]
 }
 
+model TaskList {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  icon        String   @default("L")
+  iconColor   String   @default("bg-gray-500")
+  color       String?
+  position    Int      @default(0)
+  isArchived  Boolean  @default(false)
+  workspaceId String
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  flowData    FlowData[]
+  attachments Attachment[]
+  notes       Note[]
+}
+
+
 model Task {
   id                String    @id @default(cuid())
   title             String
@@ -376,27 +399,6 @@ model TimeSession {
   createdAt DateTime @default(now())
 }
 
-model TaskList {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  icon        String   @default("L")
-  iconColor   String   @default("bg-gray-500")
-  color       String?
-  position    Int      @default(0)
-  isArchived  Boolean  @default(false)
-  workspaceId String
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  flowData    FlowData[]
-  attachments Attachment[]
-  notes       Note[]
-}
 
 model TaskGroup {
   id        String   @id @default(cuid())
