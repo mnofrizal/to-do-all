@@ -36,18 +36,20 @@ model Workspace {
 }
 
 model List {
-  id          Int       @id @default(autoincrement())
-  name        String
-  description String?
-  icon        String
-  iconColor   String
-  isArchived  Boolean   @default(false)
-  archivedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tasks       Task[]
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  workspaceId Int
+  id            Int            @id @default(autoincrement())
+  name          String
+  description   String?
+  icon          String
+  iconColor     String
+  isArchived    Boolean        @default(false)
+  archivedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  tasks         Task[]
+  timelineNodes TimelineNode[]
+  timelineEdges TimelineEdge[]
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
+  workspaceId   Int
 }
 
 model Task {
@@ -79,6 +81,8 @@ model Task {
 
   listId Int
   list   List @relation(fields: [listId], references: [id])
+
+  timelineNode TimelineNode?
 }
 
 model Subtask {
@@ -107,4 +111,37 @@ model TimeSession {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model TimelineNode {
+  id     String @id @default(cuid())
+  nodeId String // The unique ID of the node in React Flow
+  type   String // e.g., 'customTask', 'customAttachment'
+
+  positionX  Float
+  positionY  Float
+  isFinished Boolean @default(false)
+
+  listId Int
+  list   List @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  // Optional link to a Task if the node represents a task
+  taskId Int?  @unique
+  task   Task? @relation(fields: [taskId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([listId, nodeId])
+}
+
+model TimelineEdge {
+  id       String @id @default(cuid())
+  sourceId String // The ID of the source node
+  targetId String // The ID of the target node
+
+  listId Int
+  list   List @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, sourceId, targetId])
 }

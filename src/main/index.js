@@ -99,6 +99,67 @@ ipcMain.handle('delete-subtask', async (_, id) => {
   return await prisma.subtask.delete({ where: { id } })
 })
 
+// TimelineNode handlers
+ipcMain.handle('get-timeline-nodes', async (_, listId) => {
+  return await prisma.timelineNode.findMany({ where: { listId } })
+})
+
+ipcMain.handle('create-timeline-node', async (_, data) => {
+  return await prisma.timelineNode.create({ data })
+})
+
+ipcMain.handle('update-timeline-node-position', async (_, { id, position }) => {
+  return await prisma.timelineNode.update({
+    where: { id },
+    data: { positionX: position.x, positionY: position.y }
+  })
+})
+
+ipcMain.handle('update-timeline-node-finished', async (_, { id, isFinished }) => {
+  return await prisma.timelineNode.update({
+    where: { id },
+    data: { isFinished }
+  })
+})
+
+ipcMain.handle('delete-timeline-node', async (_, id) => {
+  return await prisma.timelineNode.delete({ where: { id } })
+})
+
+// TimelineEdge handlers
+ipcMain.handle('get-timeline-edges', async (_, listId) => {
+  return await prisma.timelineEdge.findMany({ where: { listId } })
+})
+
+ipcMain.handle('create-timeline-edge', async (_, data) => {
+  return await prisma.timelineEdge.create({ data })
+})
+
+ipcMain.handle('delete-timeline-edge', async (_, params) => {
+  let sourceId, targetId;
+
+  // Handle the oddly nested parameter that seems to be coming from the renderer
+  if (params && params.sourceId && typeof params.sourceId === 'object') {
+    sourceId = params.sourceId.sourceId;
+    targetId = params.sourceId.targetId;
+  } else if (params) {
+    sourceId = params.sourceId;
+    targetId = params.targetId;
+  }
+
+  if (!sourceId || !targetId) {
+    console.error('Invalid arguments for delete-timeline-edge', params);
+    return;
+  }
+
+  return await prisma.timelineEdge.deleteMany({
+    where: {
+      sourceId: sourceId,
+      targetId: targetId
+    }
+  });
+});
+
 // Simplified Timer handlers (no TimeSession creation)
 ipcMain.handle('get-task-total-time', async (_, taskId) => {
   try {

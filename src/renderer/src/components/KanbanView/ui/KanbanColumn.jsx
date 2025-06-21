@@ -6,13 +6,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
-import { Button } from './ui/button'
-import { Card, CardContent } from './ui/card'
-import { Input } from './ui/input'
-import { Progress } from './ui/progress'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
-import DayWithLabel from './DayWithLabel'
-import TaskCard from './TaskCard' // Import the new component
+import { Button } from '../../ui/button'
+import { Card, CardContent } from '../../ui/card'
+import { Input } from '../../ui/input'
+import { Progress } from '../../ui/progress'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../ui/dropdown-menu'
+import DayWithLabel from '../../DayWithLabel'
+import TaskCard from '../../TaskCard'
 
 const KanbanColumn = ({
   column,

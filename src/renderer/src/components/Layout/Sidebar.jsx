@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Home, CheckSquare, Calendar, Settings, Plus, X, Check, MoreVertical, Edit, Trash2, LogOut, User, Archive, RotateCcw } from 'lucide-react'
-import { Button } from './ui/button'
-import { Badge } from './ui/badge'
-import { Input } from './ui/input'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
-import useAppStore from '../stores/useAppStore'
+import { Button } from '../ui/button'
+import { Badge } from '../ui/badge'
+import { Input } from '../ui/input'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
+import useAppStore from '../../stores/useAppStore'
 
 const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspace, currentUser, onLogout }) => {
   // Get state from Zustand store

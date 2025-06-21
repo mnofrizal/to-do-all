@@ -63,6 +63,19 @@ if (process.contextIsolated) {
       createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
       updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
       deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
+      // TimelineNode operations
+      getTimelineNodes: (listId) => ipcRenderer.invoke('get-timeline-nodes', listId),
+      createTimelineNode: (data) => ipcRenderer.invoke('create-timeline-node', data),
+      updateTimelineNodePosition: (id, position) =>
+        ipcRenderer.invoke('update-timeline-node-position', { id, position }),
+      updateTimelineNodeFinished: (id, isFinished) =>
+        ipcRenderer.invoke('update-timeline-node-finished', { id, isFinished }),
+      deleteTimelineNode: (id) => ipcRenderer.invoke('delete-timeline-node', id),
+      // TimelineEdge operations
+      getTimelineEdges: (listId) => ipcRenderer.invoke('get-timeline-edges', listId),
+      createTimelineEdge: (data) => ipcRenderer.invoke('create-timeline-edge', data),
+      deleteTimelineEdge: (sourceId, targetId) =>
+        ipcRenderer.invoke('delete-timeline-edge', { sourceId, targetId }),
       // Simplified Timer operations (no TimeSession creation)
       getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
       getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),
@@ -108,6 +121,19 @@ if (process.contextIsolated) {
     createSubtask: (data) => ipcRenderer.invoke('create-subtask', data),
     updateSubtask: (id, data) => ipcRenderer.invoke('update-subtask', { id, data }),
     deleteSubtask: (id) => ipcRenderer.invoke('delete-subtask', id),
+    // TimelineNode operations
+    getTimelineNodes: (listId) => ipcRenderer.invoke('get-timeline-nodes', listId),
+    createTimelineNode: (data) => ipcRenderer.invoke('create-timeline-node', data),
+    updateTimelineNodePosition: (id, position) =>
+      ipcRenderer.invoke('update-timeline-node-position', { id, position }),
+    updateTimelineNodeFinished: (id, isFinished) =>
+      ipcRenderer.invoke('update-timeline-node-finished', { id, isFinished }),
+    deleteTimelineNode: (id) => ipcRenderer.invoke('delete-timeline-node', id),
+    // TimelineEdge operations
+    getTimelineEdges: (listId) => ipcRenderer.invoke('get-timeline-edges', listId),
+    createTimelineEdge: (data) => ipcRenderer.invoke('create-timeline-edge', data),
+    deleteTimelineEdge: (sourceId, targetId) =>
+      ipcRenderer.invoke('delete-timeline-edge', { sourceId, targetId }),
     // Simplified Timer operations (no TimeSession creation)
     getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
     getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),

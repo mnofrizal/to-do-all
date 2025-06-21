@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List, User, LogOut } from 'lucide-react'
-import { Button } from './ui/button'
-import { Switch } from './ui/switch.jsx'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogOverlay } from './ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
-import { useTheme } from '../contexts/ThemeContext'
-import useAppStore from '../stores/useAppStore'
-import SearchDialog from './SearchDialog'
+import { Button } from '../ui/button'
+import { Switch } from '../ui/switch.jsx'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogOverlay } from '../ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import { useTheme } from '../../contexts/ThemeContext'
+import useAppStore from '../../stores/useAppStore'
+import SearchDialog from '../SearchDialog'
 
 const TopNavbar = ({ onBack, onListChange }) => {
   const { theme, colorTheme, setThemeMode, setColorThemeMode, availableColorThemes } = useTheme()

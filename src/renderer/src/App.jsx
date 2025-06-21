@@ -1,14 +1,14 @@
 import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Sidebar from './components/Sidebar'
-import HomePage from './components/HomePage'
-import ArchivedPage from './components/ArchivedPage'
-import TaskProgress from './components/TaskProgress'
-import TitleBar from './components/TitleBar'
-import TopNavbar from './components/TopNavbar'
+import Sidebar from './components/Layout/Sidebar'
+import HomePage from './pages/HomePage'
+import ArchivedPage from './pages/ArchivedPage'
+import TaskProgress from './pages/TaskProgressPage'
+import TitleBar from './components/Layout/TitleBar'
+import TopNavbar from './components/Layout/TopNavbar'
 import FloatingTodayWindow from './components/FloatingTodayWindow'
 import FocusModeWindow from './components/FocusModeWindow'
-import Login from './components/Login'
+import Login from './pages/Login'
 import { ThemeProvider } from './contexts/ThemeContext'
 import useAppStore from './stores/useAppStore'
 import useTimerStore from './stores/useTimerStore'
@@ -113,10 +113,10 @@ const App = () => {
 
   const handleActivateTask = async (task) => {
     setActiveTask(task)
-    if (currentUser) {
+    if (task && currentUser) {
       await switchToTask(task.id, currentUser.id)
       await startForTask(task.id, currentUser.id)
-    } else {
+    } else if (task) {
       startTimer()
     }
   }
