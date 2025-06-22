@@ -1,6 +1,6 @@
 import React from 'react'
 
-const ContextMenu = ({ x, y, onClose, onAddTask, onAddAttachment, onAddNote, node, onDelete, onDetach }) => {
+const ContextMenu = ({ x, y, onClose, onAddTask, onAddAttachment, onAddNote, onAddUrl, node, onDelete, onDetach }) => {
   const handleDelete = () => {
     if (node) {
       onDelete(node)
@@ -15,7 +15,7 @@ const ContextMenu = ({ x, y, onClose, onAddTask, onAddAttachment, onAddNote, nod
     onClose()
   }
 
-  const isDetachable = node && (node.type === 'noteNode' || node.type === 'attachmentNode') && node.id.includes('-')
+  const isDetachable = node && (node.type === 'noteNode' || node.type === 'attachmentNode' || node.type === 'urlNode') && node.id.includes('-')
 
   return (
     <div
@@ -63,6 +63,16 @@ const ContextMenu = ({ x, y, onClose, onAddTask, onAddAttachment, onAddNote, nod
             className="hover:bg-gray-100"
           >
             Add Note
+          </div>
+          <div
+            onClick={onAddUrl}
+            style={{
+              padding: '8px 12px',
+              cursor: 'pointer'
+            }}
+            className="hover:bg-gray-100"
+          >
+            Add URL
           </div>
         </>
       )}

@@ -50,6 +50,7 @@ model List {
   workspace   Workspace    @relation(fields: [workspaceId], references: [id])
   workspaceId Int
   Note        Note[]
+  UrlNode     UrlNode[]
 }
 
 model Task {
@@ -73,6 +74,7 @@ model Task {
   subtasks      Subtask[]
   notes         Note[]
   attachments   Attachment[]
+  urlNodes      UrlNode[]
   timeSessions  TimeSession[] // Keep for historical data only
 
   createdAt   DateTime  @default(now())
@@ -127,6 +129,18 @@ model Attachment {
   name      String
   url       String?
   fileType  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  taskId    Int?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  listId    Int?
+  list      List?    @relation(fields: [listId], references: [id], onDelete: Cascade)
+}
+
+model UrlNode {
+  id        Int      @id @default(autoincrement())
+  name      String?
+  url       String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   taskId    Int?

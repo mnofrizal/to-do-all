@@ -15,6 +15,7 @@ import useAppStore from '../../stores/useAppStore'
 import TaskNode from './CustomNodes/TaskNode'
 import NoteNode from './CustomNodes/NoteNode'
 import AttachmentNode from './CustomNodes/AttachmentNode'
+import UrlNode from './CustomNodes/UrlNode'
 import ContextMenu from './ContextMenu'
 import AddTaskDialog from './AddTaskDialog'
 import DetailSidebar from './DetailSidebar'
@@ -56,7 +57,8 @@ const TimelineView = () => {
     () => ({
       taskNode: TaskNode,
       noteNode: NoteNode,
-      attachmentNode: AttachmentNode
+      attachmentNode: AttachmentNode,
+      urlNode: UrlNode
     }),
     []
   )
@@ -68,22 +70,27 @@ const TimelineView = () => {
     deleteNote,
     deleteAttachment,
     detachNote,
-    detachAttachment
+    detachAttachment,
+    detachUrl
   } = useTaskStore()
   const {
     selectedList,
     attachmentTrigger,
     noteTrigger,
     subtaskTrigger,
+    urlTrigger,
     triggerAttachmentUpdate,
-    triggerNoteUpdate
+    triggerNoteUpdate,
+    triggerUrlUpdate
   } = useAppStore((state) => ({
     selectedList: state.selectedList,
     attachmentTrigger: state.attachmentTrigger,
     noteTrigger: state.noteTrigger,
     subtaskTrigger: state.subtaskTrigger,
+    urlTrigger: state.urlTrigger,
     triggerAttachmentUpdate: state.triggerAttachmentUpdate,
-    triggerNoteUpdate: state.triggerNoteUpdate
+    triggerNoteUpdate: state.triggerNoteUpdate,
+    triggerUrlUpdate: state.triggerUrlUpdate
   }))
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -106,6 +113,8 @@ const TimelineView = () => {
         const targetIsAttachment = targetNode.type === 'attachmentNode'
         const sourceIsNote = sourceNode.type === 'noteNode'
         const targetIsNote = targetNode.type === 'noteNode'
+        const sourceIsUrl = sourceNode.type === 'urlNode'
+        const targetIsUrl = targetNode.type === 'urlNode'
 
         // Connect Attachment to Task
         if ((sourceIsAttachment && targetIsTask) || (targetIsAttachment && sourceIsTask)) {
@@ -128,11 +137,22 @@ const TimelineView = () => {
           await useTaskStore.getState().loadTasks(selectedList.id)
           triggerNoteUpdate()
         }
+
+        // Connect URL to Task
+        if ((sourceIsUrl && targetIsTask) || (targetIsUrl && sourceIsTask)) {
+          const urlNode = sourceIsUrl ? sourceNode : targetNode
+          const taskNode = sourceIsTask ? sourceNode : targetNode
+          const urlId = parseInt(urlNode.id.split('-')[2])
+          const taskId = parseInt(taskNode.id.split('-')[1])
+          await window.db.updateUrlNode(urlId, { taskId, listId: null })
+          setNodes((nds) => nds.filter((node) => node.id !== urlNode.id))
+          await useTaskStore.getState().loadTasks(selectedList.id)
+        }
       }
 
       setEdges((eds) => addEdge(params, eds))
     },
-    [nodes, setEdges, triggerAttachmentUpdate, triggerNoteUpdate, selectedList]
+    [nodes, setNodes, setEdges, triggerAttachmentUpdate, triggerNoteUpdate, selectedList]
   )
 
   const onDragOver = useCallback((event) => {
@@ -222,6 +242,16 @@ const TimelineView = () => {
     triggerNoteUpdate()
   }
 
+  const handleAddUrl = async () => {
+    if (!selectedList) return
+
+    await window.db.createUrlNode({
+      url: '',
+      listId: selectedList.id
+    })
+    triggerUrlUpdate()
+  }
+
   const handleDeleteNode = (node) => {
     if (!node) return
 
@@ -254,6 +284,16 @@ const TimelineView = () => {
           triggerAttachmentUpdate()
         })
       }
+    } else if (node.type === 'urlNode') {
+      const urlNodeId = parseInt(idParts[idParts.length - 1])
+      window.db.deleteUrlNode(urlNodeId).then(() => {
+        if (selectedList) {
+          useTaskStore.getState().loadTasks(selectedList.id)
+        } else {
+          triggerUrlUpdate()
+          setNodes((nds) => nds.filter((n) => n.id !== node.id))
+        }
+      })
     }
   }
 
@@ -277,6 +317,13 @@ const TimelineView = () => {
         detachAttachment(taskId, attachmentId)
         triggerAttachmentUpdate()
       })
+    } else if (node.type === 'urlNode') {
+      const urlId = parseInt(idParts[idParts.length - 1])
+      const taskId = parseInt(idParts[1])
+      window.db.updateUrlNode(urlId, { taskId: null, listId }).then(() => {
+        detachUrl(taskId, urlId)
+        triggerUrlUpdate()
+      })
     }
   }
 
@@ -299,6 +346,7 @@ const TimelineView = () => {
       // Fetch list-specific notes and attachments
       const listNotes = await window.db.getNotes({ listId: selectedList.id })
       const listAttachments = await window.db.getAttachments({ listId: selectedList.id })
+      const listUrlNodes = await window.db.getUrls({ listId: selectedList.id })
 
       // Layout for list-level notes and attachments
       let listNodeX = 0
@@ -324,6 +372,19 @@ const TimelineView = () => {
             type: 'attachmentNode',
             data: { label: attachment.name, attachment },
             position: { x: listNodeX + index * (nodeWidth / 2 + 10), y: listNodeY }
+          })
+        }
+      })
+
+      listNodeX += listAttachments.filter(a => !a.taskId).length * (nodeWidth / 2 + 10) + 50
+
+      listUrlNodes.forEach((urlNode, index) => {
+        if (!urlNode.taskId) {
+          initialNodes.push({
+            id: `list-url-${urlNode.id}`,
+            type: 'urlNode',
+            data: { label: urlNode.url, urlNode },
+            position: { x: listNodeX + index * (nodeWidth + 20), y: listNodeY }
           })
         }
       })
@@ -366,6 +427,29 @@ const TimelineView = () => {
               source: taskNodeId,
               sourceHandle: 'attachments',
               target: attachmentNodeId,
+              type: 'smoothstep'
+            })
+          })
+        }
+
+        if (task.urlNodes && task.urlNodes.length > 0) {
+          const attachmentCount = task.attachments?.length || 0
+          task.urlNodes.forEach((urlNode, index) => {
+            const urlNodeId = `url-${task.id}-${urlNode.id}`
+            initialNodes.push({
+              id: urlNodeId,
+              type: 'urlNode',
+              data: { label: urlNode.url, urlNode },
+              position: {
+                x: taskX + nodeWidth + horizontalSpacing,
+                y: taskY + (attachmentCount + index) * (nodeHeight + 10)
+              }
+            })
+            initialEdges.push({
+              id: `e-${taskNodeId}-to-${urlNodeId}`,
+              source: taskNodeId,
+              sourceHandle: 'attachments', // Use the same handle as attachments
+              target: urlNodeId,
               type: 'smoothstep'
             })
           })
@@ -470,10 +554,18 @@ const TimelineView = () => {
 
       setNodes(initialNodes)
       setEdges(initialEdges)
+
+      // If a node is selected, find its updated version and update the state
+      if (selectedNode) {
+        const updatedNode = initialNodes.find((n) => n.id === selectedNode.id)
+        if (updatedNode) {
+          setSelectedNode(updatedNode)
+        }
+      }
     }
 
     generateLayout()
-  }, [taskColumns, selectedList, attachmentTrigger, noteTrigger, subtaskTrigger])
+  }, [taskColumns, selectedList, attachmentTrigger, noteTrigger, subtaskTrigger, urlTrigger])
 
   return (
     <div className="h-full w-full" ref={reactFlowWrapper}>
@@ -504,6 +596,7 @@ const TimelineView = () => {
               onAddTask={() => setIsAddTaskDialogOpen(true)}
               onAddAttachment={handleAddAttachment}
               onAddNote={handleAddNote}
+              onAddUrl={handleAddUrl}
               node={menu.node}
               onDelete={handleDeleteNode}
               onDetach={handleDetachNode}

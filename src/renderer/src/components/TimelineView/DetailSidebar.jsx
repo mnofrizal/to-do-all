@@ -9,8 +9,32 @@ import useAppStore from '../../stores/useAppStore'
 const DetailSidebar = ({ node, onClose }) => {
   const [newNote, setNewNote] = useState('')
   const [newSubtask, setNewSubtask] = useState('')
+  const [isEditingUrl, setIsEditingUrl] = useState(false)
+  const [urlName, setUrlName] = useState(node?.data?.urlNode?.name || '')
+  const [urlValue, setUrlValue] = useState(node?.data?.urlNode?.url || '')
+  const [isEditingNote, setIsEditingNote] = useState(false)
+  const [noteContent, setNoteContent] = useState(node?.data?.note?.content || '')
+  const [isEditingAttachment, setIsEditingAttachment] = useState(false)
+  const [attachmentName, setAttachmentName] = useState(node?.data?.attachment?.name || '')
+  const [fileChangeSuccess, setFileChangeSuccess] = useState(false)
   const { addAttachment, deleteAttachment, addSubtask, deleteSubtask, updateSubtask, deleteTask, taskColumns } = useTaskStore()
-  const { selectedList, triggerNoteUpdate, triggerAttachmentUpdate } = useAppStore()
+  const { selectedList, triggerNoteUpdate, triggerAttachmentUpdate, triggerUrlUpdate } = useAppStore()
+
+  React.useEffect(() => {
+    if (node?.data?.urlNode) {
+      setUrlName(node.data.urlNode.name || '')
+      setUrlValue(node.data.urlNode.url || '')
+    }
+  }, [node, node?.data?.urlNode?.name, node?.data?.urlNode?.url])
+
+  React.useEffect(() => {
+    if (node?.data?.note) {
+      setNoteContent(node.data.note.content || '')
+    }
+    if (node?.data?.attachment) {
+      setAttachmentName(node.data.attachment.name || '')
+    }
+  }, [node, node?.data?.note?.content, node?.data?.attachment?.name])
 
   // Find the most up-to-date task data from the store
   const latestTaskData = node?.data?.task
@@ -106,6 +130,14 @@ const DetailSidebar = ({ node, onClose }) => {
         } else {
           await window.db.deleteAttachment(data.attachment.id)
           triggerAttachmentUpdate()
+        }
+        break
+      case 'urlNode':
+        await window.db.deleteUrlNode(data.urlNode.id)
+        if (selectedList) {
+          useTaskStore.getState().loadTasks(selectedList.id)
+        } else {
+          triggerUrlUpdate()
         }
         break
       default:
@@ -239,15 +271,152 @@ const DetailSidebar = ({ node, onClose }) => {
         return (
           <div>
             <h3 className="mb-2 text-lg font-semibold">Note Details</h3>
-            <p>{data.label}</p>
+            {isEditingNote ? (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Note content"
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                />
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    onClick={async () => {
+                      await window.db.updateNote(data.note.id, { content: noteContent })
+                      setIsEditingNote(false)
+                      if (selectedList) {
+                        useTaskStore.getState().loadTasks(selectedList.id)
+                      } else {
+                        triggerNoteUpdate()
+                      }
+                    }}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="ghost" onClick={() => setIsEditingNote(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p>{noteContent}</p>
+                <Button onClick={() => setIsEditingNote(true)}>Edit</Button>
+              </div>
+            )}
           </div>
         )
       case 'attachmentNode':
         return (
           <div>
             <h3 className="mb-2 text-lg font-semibold">Attachment Details</h3>
-            <p><strong>Name:</strong> {data.label}</p>
-            <p><strong>Type:</strong> {data.attachment?.fileType || 'N/A'}</p>
+            {isEditingAttachment ? (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Attachment name"
+                  value={attachmentName}
+                  onChange={(e) => setAttachmentName(e.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.onchange = async (e) => {
+                      const file = e.target.files[0]
+                      if (file) {
+                        await window.db.updateAttachment(data.attachment.id, {
+                          name: file.name,
+                          url: file.path,
+                          fileType: file.type
+                        })
+                        setFileChangeSuccess(true)
+                        setTimeout(() => setFileChangeSuccess(false), 3000)
+                        if (selectedList) {
+                          useTaskStore.getState().loadTasks(selectedList.id)
+                        } else {
+                          triggerAttachmentUpdate()
+                        }
+                      }
+                    }
+                    input.click()
+                  }}
+                >
+                  Change File
+                </Button>
+                {fileChangeSuccess && <span className="text-sm text-green-500">File changed successfully!</span>}
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    onClick={async () => {
+                      await window.db.updateAttachment(data.attachment.id, { name: attachmentName })
+                      setIsEditingAttachment(false)
+                      if (selectedList) {
+                        useTaskStore.getState().loadTasks(selectedList.id)
+                      } else {
+                        triggerAttachmentUpdate()
+                      }
+                    }}
+                  >
+                    Save Name
+                  </Button>
+                  <Button variant="ghost" onClick={() => setIsEditingAttachment(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p><strong>Name:</strong> {attachmentName}</p>
+                <p><strong>Type:</strong> {data.attachment?.fileType || 'N/A'}</p>
+                <Button onClick={() => setIsEditingAttachment(true)}>Edit</Button>
+              </div>
+            )}
+          </div>
+        )
+      case 'urlNode':
+        return (
+          <div>
+            <h3 className="mb-2 text-lg font-semibold">URL Details</h3>
+            {isEditingUrl ? (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Name (optional)"
+                  value={urlName}
+                  onChange={(e) => setUrlName(e.target.value)}
+                />
+                <Input
+                  placeholder="URL"
+                  value={urlValue}
+                  onChange={(e) => setUrlValue(e.target.value)}
+                />
+                <div className="flex justify-end space-x-2">
+                  <Button
+                    onClick={async () => {
+                      await window.db.updateUrlNode(data.urlNode.id, { name: urlName, url: urlValue })
+                      triggerUrlUpdate()
+                      setIsEditingUrl(false)
+                    }}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="ghost" onClick={() => setIsEditingUrl(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p>
+                  <strong>Name:</strong> {urlName || 'N/A'}
+                </p>
+                <p>
+                  <strong>URL:</strong>{' '}
+                  <a href={urlValue} target="_blank" rel="noopener noreferrer">
+                    {urlValue}
+                  </a>
+                </p>
+                <Button onClick={() => setIsEditingUrl(true)}>Edit</Button>
+              </div>
+            )}
           </div>
         )
       default:

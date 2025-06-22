@@ -74,6 +74,11 @@ if (process.contextIsolated) {
       getNotes: (params) => ipcRenderer.invoke('get-notes', params),
       updateNote: (id, data) => ipcRenderer.invoke('update-note', { id, data }),
       deleteNote: (id) => ipcRenderer.invoke('delete-note', id),
+      // UrlNode operations
+      createUrlNode: (data) => ipcRenderer.invoke('create-url-node', data),
+      updateUrlNode: (id, data) => ipcRenderer.invoke('update-url-node', { id, data }),
+      deleteUrlNode: (id) => ipcRenderer.invoke('delete-url-node', id),
+      getUrls: (params) => ipcRenderer.invoke('get-urls', params),
       // Simplified Timer operations (no TimeSession creation)
       getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
       getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),
@@ -129,6 +134,11 @@ if (process.contextIsolated) {
     getNotes: (params) => ipcRenderer.invoke('get-notes', params),
     updateNote: (id, data) => ipcRenderer.invoke('update-note', { id, data }),
     deleteNote: (id) => ipcRenderer.invoke('delete-note', id),
+    // UrlNode operations
+    createUrlNode: (data) => ipcRenderer.invoke('create-url-node', data),
+    updateUrlNode: (id, data) => ipcRenderer.invoke('update-url-node', { id, data }),
+    deleteUrlNode: (id) => ipcRenderer.invoke('delete-url-node', id),
+    getUrls: (params) => ipcRenderer.invoke('get-urls', params),
     // Simplified Timer operations (no TimeSession creation)
     getTaskTotalTime: (taskId) => ipcRenderer.invoke('get-task-total-time', taskId),
     getTasksWithActiveTimers: () => ipcRenderer.invoke('get-tasks-with-active-timers'),

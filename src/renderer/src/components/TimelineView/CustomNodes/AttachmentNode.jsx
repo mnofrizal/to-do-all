@@ -2,9 +2,10 @@ import React from 'react'
 import { Handle, Position } from 'reactflow'
 import { Paperclip, Upload } from 'lucide-react'
 import useAppStore from '../../../stores/useAppStore'
+import useTaskStore from '../../../stores/useTaskStore'
 
 const AttachmentNode = ({ data }) => {
-  const { triggerAttachmentUpdate } = useAppStore()
+  const { triggerAttachmentUpdate, selectedList } = useAppStore()
   const handleUpload = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -16,7 +17,11 @@ const AttachmentNode = ({ data }) => {
           url: file.path,
           fileType: file.type
         })
-        triggerAttachmentUpdate()
+        if (selectedList) {
+          useTaskStore.getState().loadTasks(selectedList.id)
+        } else {
+          triggerAttachmentUpdate()
+        }
       }
     }
     input.click()

@@ -441,6 +441,24 @@ const useTaskStore = create(
       })
     },
 
+    detachUrl: (taskId, urlId) => {
+      set((state) => {
+        const newColumns = state.taskColumns.map((col) => ({
+          ...col,
+          tasks: col.tasks.map((task) => {
+            if (task.id === taskId) {
+              return {
+                ...task,
+                urlNodes: task.urlNodes.filter((url) => url.id !== urlId)
+              }
+            }
+            return task
+          })
+        }))
+        return { taskColumns: newColumns }
+      })
+    },
+
     moveTask: async (taskId, direction) => {
       const { taskColumns } = get()
       const columnOrder = ['backlog', 'thisweek', 'today', 'done']

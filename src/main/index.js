@@ -80,7 +80,10 @@ ipcMain.handle('delete-list', async (_, id) => {
 })
 
 ipcMain.handle('get-tasks', async (_, listId) => {
-  return await prisma.task.findMany({ where: { listId }, include: { subtasks: true, attachments: true, notes: true } })
+  return await prisma.task.findMany({
+    where: { listId },
+    include: { subtasks: true, attachments: true, notes: true, urlNodes: true }
+  })
 })
 
 // Note handlers
@@ -105,6 +108,31 @@ ipcMain.handle('update-note', async (_, { id, data }) => {
 ipcMain.handle('delete-note', async (_, id) => {
   return await prisma.note.delete({ where: { id } })
 })
+
+// UrlNode handlers
+ipcMain.handle('create-url-node', async (_, data) => {
+  return await prisma.urlNode.create({ data })
+})
+
+ipcMain.handle('update-url-node', async (_, { id, data }) => {
+  console.log('Updating URL node in main process:', { id, data })
+  return await prisma.urlNode.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-url-node', async (_, id) => {
+  return await prisma.urlNode.delete({ where: { id } })
+})
+
+ipcMain.handle('get-urls', async (_, { taskId, listId }) => {
+  if (taskId) {
+    return await prisma.urlNode.findMany({ where: { taskId } })
+  }
+  if (listId) {
+    return await prisma.urlNode.findMany({ where: { listId } })
+  }
+  return []
+})
+
 ipcMain.handle('create-task', async (_, data) => {
   return await prisma.task.create({ data })
 })
@@ -193,15 +221,25 @@ ipcMain.handle('delete-attachment', async (_, id) => {
 })
 
 ipcMain.handle('update-attachment', async (_, { id, data }) => {
-  if (data.url && !data.url.startsWith(app.getPath('userData'))) {
-    const uniqueFileName = `${Date.now()}-${data.name}`
-    const newFilePath = path.join(attachmentsDir, uniqueFileName)
-    try {
-      fs.copyFileSync(data.url, newFilePath)
-      data.url = newFilePath
-    } catch (error) {
-      console.error('Failed to save attachment:', error)
-      throw error
+  const existingAttachment = await prisma.attachment.findUnique({ where: { id } })
+
+  if (data.url && existingAttachment && data.url !== existingAttachment.url) {
+    // New file is being uploaded, delete the old one
+    if (existingAttachment.url && fs.existsSync(existingAttachment.url)) {
+      fs.unlinkSync(existingAttachment.url)
+    }
+
+    // Copy the new file
+    if (!data.url.startsWith(app.getPath('userData'))) {
+      const uniqueFileName = `${Date.now()}-${data.name}`
+      const newFilePath = path.join(attachmentsDir, uniqueFileName)
+      try {
+        fs.copyFileSync(data.url, newFilePath)
+        data.url = newFilePath
+      } catch (error) {
+        console.error('Failed to save new attachment:', error)
+        throw error
+      }
     }
   }
   return await prisma.attachment.update({ where: { id }, data })
@@ -246,7 +284,7 @@ ipcMain.handle('get-task', async (_, taskId) => {
   try {
     return await prisma.task.findUnique({
       where: { id: taskId },
-      include: { subtasks: true, attachments: true, notes: true }
+      include: { subtasks: true, attachments: true, notes: true, urlNodes: true }
     })
   } catch (error) {
     console.error('Error getting task:', error)

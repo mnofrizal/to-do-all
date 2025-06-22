@@ -29,6 +29,7 @@ const useAppStore = create(
     
     attachmentTrigger: 0,
     noteTrigger: 0,
+    urlTrigger: 0,
     
     // Actions for authentication
     setCurrentUser: (user) => set({ currentUser: user }),
@@ -257,6 +258,7 @@ const useAppStore = create(
     triggerAttachmentUpdate: () => set((state) => ({ attachmentTrigger: state.attachmentTrigger + 1 })),
     triggerNoteUpdate: () => set((state) => ({ noteTrigger: state.noteTrigger + 1 })),
     triggerSubtaskUpdate: () => set((state) => ({ subtaskTrigger: state.subtaskTrigger + 1 })),
+    triggerUrlUpdate: () => set((state) => ({ urlTrigger: state.urlTrigger + 1 })),
   }))
 )
 
