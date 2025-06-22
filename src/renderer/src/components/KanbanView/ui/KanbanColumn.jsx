@@ -1,6 +1,6 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Menu, FileText, ChevronLeft, ChevronRight, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, ArrowUp, ArrowDown, Trash2, Zap } from 'lucide-react'
+import { Plus, Menu, FileText, ChevronLeft, ChevronRight, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, ArrowUp, ArrowDown, Trash2, Zap, Paperclip } from 'lucide-react'
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -30,10 +30,6 @@ const KanbanColumn = ({
   handleChangePriority,
   handleDeleteTask,
   getPriorityColor,
-  taskNotes,
-  handleNotesChange,
-  handleSaveNotes,
-  handleDeleteNotes,
   expandedNotes,
   setExpandedNotes,
   taskSubtasks, // Assuming subtasks are managed at a higher level or passed per task
@@ -66,6 +62,10 @@ const KanbanColumn = ({
   handleKeyPress,
   getColumnProgress,
   handleLeapItClick,
+  addAttachment,
+  deleteAttachment,
+  expandedAttachments,
+  setExpandedAttachments,
 }) => {
   // Note: Some state like newSubtaskInputs, taskNotes, etc., might need to be scoped per task or column
   // For simplicity, passing them down for now. Refinements might be needed.
@@ -213,17 +213,17 @@ const KanbanColumn = ({
                               handleToggleSubtasks={handleToggleSubtasks}
                               handleShowSubtaskInput={handleShowSubtaskInput}
                               handleToggleNotes={handleToggleNotes}
+                              handleToggleAttachments={() => setExpandedAttachments(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
                               handleMoveTask={handleMoveTask}
                               handleDuplicateTask={handleDuplicateTask}
                               handleChangePriority={handleChangePriority}
                               handleDeleteTask={handleDeleteTask}
                               getPriorityColor={getPriorityColor}
-                              taskNotes={taskNotes}
-                              handleNotesChange={handleNotesChange}
-                              handleSaveNotes={handleSaveNotes}
-                              handleDeleteNotes={handleDeleteNotes}
                               expandedNotes={expandedNotes}
                               setExpandedNotes={setExpandedNotes}
+                              expandedAttachments={expandedAttachments}
+                              addAttachment={addAttachment}
+                              deleteAttachment={deleteAttachment}
                               expandedSubtasks={expandedSubtasks}
                               setExpandedSubtasks={setExpandedSubtasks}
                               newSubtaskInputs={newSubtaskInputs}
@@ -271,17 +271,17 @@ const KanbanColumn = ({
                     handleToggleSubtasks={handleToggleSubtasks}
                     handleShowSubtaskInput={handleShowSubtaskInput}
                     handleToggleNotes={handleToggleNotes}
+                    handleToggleAttachments={() => setExpandedAttachments(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
                     handleMoveTask={handleMoveTask}
                     handleDuplicateTask={handleDuplicateTask}
                     handleChangePriority={handleChangePriority}
                     handleDeleteTask={handleDeleteTask}
                     getPriorityColor={getPriorityColor}
-                    taskNotes={taskNotes}
-                    handleNotesChange={handleNotesChange}
-                    handleSaveNotes={handleSaveNotes}
-                    handleDeleteNotes={handleDeleteNotes}
                     expandedNotes={expandedNotes}
                     setExpandedNotes={setExpandedNotes}
+                    expandedAttachments={expandedAttachments}
+                    addAttachment={addAttachment}
+                    deleteAttachment={deleteAttachment}
                     expandedSubtasks={expandedSubtasks}
                     setExpandedSubtasks={setExpandedSubtasks}
                     newSubtaskInputs={newSubtaskInputs}

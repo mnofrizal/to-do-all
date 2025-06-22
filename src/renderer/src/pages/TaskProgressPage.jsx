@@ -1,9 +1,11 @@
 import React, { Suspense, useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ErrorBoundary from '../components/ErrorBoundary'
+import FloatingAttachmentPanel from '../components/FloatingAttachmentPanel'
+import FloatingNotePanel from '../components/FloatingNotePanel'
 
 const KanbanView = React.lazy(() => import('../components/KanbanView'))
-const TaskFlowTimeline = React.lazy(() => import('../components/TaskFlowTimeline'))
+const TimelineView = React.lazy(() => import('../components/TimelineView'))
 
 const TaskProgress = ({ activeView = 'kanban', selectedList, onLeapIt }) => {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -38,17 +40,9 @@ const TaskProgress = ({ activeView = 'kanban', selectedList, onLeapIt }) => {
   const renderViewContent = () => {
     switch (activeView) {
       case 'kanban':
-        return <KanbanView selectedList={selectedList} onLeapIt={onLeapIt} key={refreshKey} />
+        return <KanbanView selectedList={selectedList} onLeapIt={onLeapIt} onRefreshKanban={() => setRefreshKey(prev => prev + 1)} key={refreshKey} />
       case 'timeline':
-        return (
-          <div className="flex h-full px-0 pt-6">
-            <div className="flex-1 border border-border bg-card" style={{ minHeight: 600 }}>
-              <ErrorBoundary>
-                <TaskFlowTimeline selectedList={selectedList} onRefreshKanban={() => setRefreshKey(prev => prev + 1)} />
-              </ErrorBoundary>
-            </div>
-          </div>
-        )
+        return <TimelineView />
       default:
         return (
           <div className="flex h-full items-center justify-center">
@@ -79,6 +73,12 @@ const TaskProgress = ({ activeView = 'kanban', selectedList, onLeapIt }) => {
           </Suspense>
         </motion.div>
       </AnimatePresence>
+      {selectedList && (
+        <>
+          <FloatingAttachmentPanel listId={selectedList.id} />
+          <FloatingNotePanel listId={selectedList.id} />
+        </>
+      )}
     </div>
   )
 }

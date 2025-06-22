@@ -36,20 +36,20 @@ model Workspace {
 }
 
 model List {
-  id            Int            @id @default(autoincrement())
-  name          String
-  description   String?
-  icon          String
-  iconColor     String
-  isArchived    Boolean        @default(false)
-  archivedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  tasks         Task[]
-  timelineNodes TimelineNode[]
-  timelineEdges TimelineEdge[]
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
-  workspaceId   Int
+  id          Int          @id @default(autoincrement())
+  name        String
+  description String?
+  icon        String
+  iconColor   String
+  isArchived  Boolean      @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  tasks       Task[]
+  attachments Attachment[]
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id])
+  workspaceId Int
+  Note        Note[]
 }
 
 model Task {
@@ -69,11 +69,11 @@ model Task {
   weekYear          Int?
   assignedWeek      String?
 
-  orderInColumn Int     @default(0)
-  notes         String?
-
-  subtasks     Subtask[]
-  timeSessions TimeSession[] // Keep for historical data only
+  orderInColumn Int           @default(0)
+  subtasks      Subtask[]
+  notes         Note[]
+  attachments   Attachment[]
+  timeSessions  TimeSession[] // Keep for historical data only
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -81,8 +81,17 @@ model Task {
 
   listId Int
   list   List @relation(fields: [listId], references: [id])
+}
 
-  timelineNode TimelineNode?
+model Note {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  taskId    Int?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  listId    Int?
+  list      List?    @relation(fields: [listId], references: [id], onDelete: Cascade)
 }
 
 model Subtask {
@@ -113,35 +122,15 @@ model TimeSession {
   updatedAt DateTime @updatedAt
 }
 
-model TimelineNode {
-  id     String @id @default(cuid())
-  nodeId String // The unique ID of the node in React Flow
-  type   String // e.g., 'customTask', 'customAttachment'
-
-  positionX  Float
-  positionY  Float
-  isFinished Boolean @default(false)
-
-  listId Int
-  list   List @relation(fields: [listId], references: [id], onDelete: Cascade)
-
-  // Optional link to a Task if the node represents a task
-  taskId Int?  @unique
-  task   Task? @relation(fields: [taskId], references: [id])
-
+model Attachment {
+  id        Int      @id @default(autoincrement())
+  name      String
+  url       String?
+  fileType  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@unique([listId, nodeId])
-}
-
-model TimelineEdge {
-  id       String @id @default(cuid())
-  sourceId String // The ID of the source node
-  targetId String // The ID of the target node
-
-  listId Int
-  list   List @relation(fields: [listId], references: [id], onDelete: Cascade)
-
-  @@unique([listId, sourceId, targetId])
+  taskId    Int?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  listId    Int?
+  list      List?    @relation(fields: [listId], references: [id], onDelete: Cascade)
 }

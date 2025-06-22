@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical, X } from 'lucide-react'
+import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical, X, Paperclip } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -17,7 +17,6 @@ const HomePage = ({ onCardClick }) => {
   const [selectedColor, setSelectedColor] = useState('bg-blue-500')
   const [selectedIcon, setSelectedIcon] = useState('')
   const [iconFile, setIconFile] = useState(null)
-
   // Get activeWorkspace and store actions from Zustand store
   const { activeWorkspace, archiveList, setWorkspaceLists } = useAppStore()
 
@@ -42,8 +41,7 @@ const HomePage = ({ onCardClick }) => {
           // Filter out archived lists from normal view
           const activeLists = fetchedLists.filter(list => !list.isArchived)
           
-          // Fetch tasks for each list to calculate pending task counts
-          const listsWithTasks = await Promise.all(
+          const listsWithDetails = await Promise.all(
             activeLists.map(async (list) => {
               try {
                 const tasks = await window.db.getTasks(list.id)
@@ -52,7 +50,7 @@ const HomePage = ({ onCardClick }) => {
                   tasks: tasks
                 }
               } catch (error) {
-                console.error('Failed to fetch tasks for list:', list.id, error)
+                console.error('Failed to fetch details for list:', list.id, error)
                 return {
                   ...list,
                   tasks: []
@@ -61,9 +59,9 @@ const HomePage = ({ onCardClick }) => {
             })
           )
           
-          setLists(listsWithTasks)
+          setLists(listsWithDetails)
           // Also update the Zustand store
-          setWorkspaceLists(listsWithTasks)
+          setWorkspaceLists(listsWithDetails)
         } catch (error) {
           console.error('Failed to fetch lists for workspace:', activeWorkspace, error)
           setLists([])
@@ -414,7 +412,6 @@ const HomePage = ({ onCardClick }) => {
                   <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400">
                     {list.tasks ? list.tasks.filter(t => t.status !== 'done').length : 0} pending tasks
                   </span>
-                  
                 </div>
               </div>
             </CardContent>

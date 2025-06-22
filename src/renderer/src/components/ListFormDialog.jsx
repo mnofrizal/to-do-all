@@ -2,6 +2,8 @@ import React from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
+import { Paperclip, Trash2 } from 'lucide-react'
+import FileIcon from './FileIcon'
 
 const ListFormDialog = ({
   isOpen,
@@ -117,6 +119,7 @@ const ListFormDialog = ({
               }}
             />
           </div>
+
         </div>
 
         <DialogFooter>

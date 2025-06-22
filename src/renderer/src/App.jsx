@@ -279,9 +279,6 @@ const App = () => {
     exitSpecialModes()
   }
 
-  const handleTaskClick = (task) => {
-    setActiveTaskView('timeline')
-  }
 
   // Instant page switching - no transition delays
   const pageVariants = {
@@ -395,11 +392,30 @@ const App = () => {
           variants={pageVariants}
           transition={pageTransition}
         >
-          <TaskProgress 
-            onBack={handleBackToHome} 
-            selectedList={selectedList} 
-            activeView={activeTaskView} 
-            onTaskClick={handleTaskClick}
+          <TaskProgress
+            onBack={handleBackToHome}
+            selectedList={selectedList}
+            activeView={activeTaskView}
+            onLeapIt={handleLeapIt}
+          />
+        </motion.div>
+      )
+    }
+
+    if (currentView === 'timeline') {
+      return (
+        <motion.div
+          key="timeline"
+          initial="initial"
+          animate="in"
+          exit="out"
+          variants={pageVariants}
+          transition={pageTransition}
+        >
+          <TaskProgress
+            onBack={handleBackToHome}
+            selectedList={selectedList}
+            activeView="timeline"
             onLeapIt={handleLeapIt}
           />
         </motion.div>

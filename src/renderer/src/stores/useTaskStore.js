@@ -1,39 +1,43 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { getDefaultTaskColumns } from '../data/taskData'
+import {
+  getDefaultTaskColumns,
+  createNewTask,
+  updateTaskToCurrentWeek,
+  getCurrentWeek
+} from '../data/taskData'
+import { arrayMove } from '@dnd-kit/sortable'
+import useAppStore from './useAppStore'
 
 const useTaskStore = create(
   subscribeWithSelector((set, get) => ({
     // Task state
     activeTask: null,
     taskColumns: getDefaultTaskColumns(),
-    selectedList: null,
-    
+
     // Task actions
     setActiveTask: (task) => set({ activeTask: task }),
     setTaskColumns: (columns) => set({ taskColumns: columns }),
-    setSelectedList: (list) => set({ selectedList: list }),
-    
+
     // Load tasks from database
     loadTasks: async (listId) => {
       if (!listId) {
         set({ taskColumns: getDefaultTaskColumns() })
         return
       }
-      
+
       try {
         const tasks = await window.db.getTasks(listId)
+        console.log('Loaded tasks:', tasks)
         const newColumns = getDefaultTaskColumns()
-        
-        tasks.forEach(task => {
+
+        tasks.forEach((task) => {
           let targetColumnId = task.status
-          
-          // Sort subtasks by order field if they exist
+
           if (task.subtasks && task.subtasks.length > 0) {
             task.subtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
           }
-          
-          // Map task status to correct column
+
           if (task.status === 'done') {
             targetColumnId = 'done'
           } else if (task.status === 'backlog') {
@@ -41,7 +45,6 @@ const useTaskStore = create(
           } else if (task.scheduledForToday === true && task.status !== 'done') {
             targetColumnId = 'today'
           } else if (task.status === 'inprogress') {
-            // Check if it's assigned to current week
             const currentWeek = getCurrentWeek()
             if (task.assignedWeek === currentWeek.weekString) {
               targetColumnId = 'thisweek'
@@ -51,57 +54,55 @@ const useTaskStore = create(
           } else {
             targetColumnId = 'backlog'
           }
-          
-          const column = newColumns.find(c => c.id === targetColumnId)
+
+          const column = newColumns.find((c) => c.id === targetColumnId)
           if (column) {
             column.tasks.push(task)
           }
         })
-        
-        // Sort tasks in each column by orderInColumn
-        newColumns.forEach(column => {
+
+        newColumns.forEach((column) => {
           column.tasks.sort((a, b) => (a.orderInColumn || 0) - (b.orderInColumn || 0))
         })
-        
+
         set({ taskColumns: newColumns })
       } catch (error) {
         console.error('Failed to load tasks:', error)
         set({ taskColumns: getDefaultTaskColumns() })
       }
     },
-    
+
     // Create a new task
-    createTask: async (taskData) => {
-      try {
-        const newTask = await window.db.createTask(taskData)
-        
-        set((state) => {
-          const updatedColumns = state.taskColumns.map(col =>
-            col.id === taskData.status || (taskData.scheduledForToday && col.id === 'today')
-              ? { ...col, tasks: [...col.tasks, newTask] }
-              : col
-          )
-          return { taskColumns: updatedColumns }
-        })
-        
-        return newTask
-      } catch (error) {
-        console.error('Failed to create task:', error)
-        throw error
+    createTask: async (columnId, taskTitle) => {
+      const { taskColumns } = get()
+      const { selectedList } = useAppStore.getState()
+      if (!taskTitle.trim() || !selectedList) return
+
+      const currentColumn = taskColumns.find((col) => col.id === columnId)
+      const orderInColumn = currentColumn ? currentColumn.tasks.length : 0
+
+      const newTaskData = {
+        ...createNewTask(taskTitle, columnId, selectedList.id),
+        orderInColumn
       }
+      const newTask = await window.db.createTask(newTaskData)
+
+      set((state) => {
+        const updatedColumns = state.taskColumns.map((col) =>
+          col.id === columnId ? { ...col, tasks: [...col.tasks, { ...newTask, orderInColumn }] } : col
+        )
+        return { taskColumns: updatedColumns }
+      })
     },
-    
+
     // Update a task
     updateTask: async (taskId, updateData) => {
       try {
         await window.db.updateTask(taskId, updateData)
-        
         set((state) => {
-          const updatedColumns = state.taskColumns.map(col => ({
+          const updatedColumns = state.taskColumns.map((col) => ({
             ...col,
-            tasks: col.tasks.map(task =>
-              task.id === taskId ? { ...task, ...updateData } : task
-            )
+            tasks: col.tasks.map((task) => (task.id === taskId ? { ...task, ...updateData } : task))
           }))
           return { taskColumns: updatedColumns }
         })
@@ -110,16 +111,39 @@ const useTaskStore = create(
         throw error
       }
     },
-    
+
     // Delete a task
     deleteTask: async (taskId) => {
       try {
+        const { taskColumns } = get()
+        let taskToDelete = null
+        for (const col of taskColumns) {
+          const task = col.tasks.find((t) => t.id === taskId)
+          if (task) {
+            taskToDelete = task
+            break
+          }
+        }
+
+        if (taskToDelete) {
+          if (taskToDelete.attachments && taskToDelete.attachments.length > 0) {
+            for (const attachment of taskToDelete.attachments) {
+              await window.db.deleteAttachment(attachment.id)
+            }
+          }
+          if (taskToDelete.notes && taskToDelete.notes.length > 0) {
+            for (const note of taskToDelete.notes) {
+              await window.db.deleteNote(note.id)
+            }
+          }
+        }
+
         await window.db.deleteTask(taskId)
-        
+
         set((state) => {
-          const updatedColumns = state.taskColumns.map(col => ({
+          const updatedColumns = state.taskColumns.map((col) => ({
             ...col,
-            tasks: col.tasks.filter(task => task.id !== taskId)
+            tasks: col.tasks.filter((task) => task.id !== taskId)
           }))
           return { taskColumns: updatedColumns }
         })
@@ -128,86 +152,442 @@ const useTaskStore = create(
         throw error
       }
     },
-    
-    // Move task between columns
-    moveTask: async (taskId, fromColumnId, toColumnId, updateData = {}) => {
-      try {
-        // Update in database
-        await window.db.updateTask(taskId, updateData)
-        
+
+    // Drag and drop handlers
+    handleDragStart: (event) => {
+      // Logic to handle drag start if needed, e.g., setting activeId
+    },
+
+    handleDragOver: (event) => {
+      const { active, over } = event
+      if (!over) return
+
+      const activeId = active.id
+      const overId = over.id
+
+      const { taskColumns } = get()
+      const activeContainer = findContainer(taskColumns, activeId)
+      const overContainer = findContainer(taskColumns, overId)
+
+      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+        return
+      }
+
+      set((state) => {
+        const activeItems = state.taskColumns.find((col) => col.id === activeContainer)?.tasks || []
+        const overItems = state.taskColumns.find((col) => col.id === overContainer)?.tasks || []
+        const activeIndex = activeItems.findIndex((item) => item.id === activeId)
+        const overIndex = overItems.findIndex((item) => item.id === overId)
+
+        let newIndex
+        if (overId in state.taskColumns.reduce((acc, col) => ({ ...acc, [col.id]: col }), {})) {
+          newIndex = overItems.length + 1
+        } else {
+          const isBelowOverItem = over && overIndex < overItems.length - 1
+          const modifier = isBelowOverItem ? 1 : 0
+          newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1
+        }
+
+        const taskToMove = activeItems[activeIndex]
+        const updatedTask = updateTaskForColumn(taskToMove, overContainer)
+
+        const newColumns = state.taskColumns.map((col) => {
+          if (col.id === activeContainer) {
+            const filteredTasks = col.tasks.filter((task) => task.id !== activeId)
+            const reorderedTasks = filteredTasks.map((task, idx) => ({
+              ...task,
+              orderInColumn: idx
+            }))
+            return { ...col, tasks: reorderedTasks }
+          } else if (col.id === overContainer) {
+            const newTasks = [...col.tasks]
+            newTasks.splice(newIndex, 0, { ...updatedTask, orderInColumn: newIndex })
+            const reorderedTasks = newTasks.map((task, idx) => ({
+              ...task,
+              orderInColumn: idx
+            }))
+            return { ...col, tasks: reorderedTasks }
+          }
+          return col
+        })
+        return { taskColumns: newColumns }
+      })
+    },
+
+    handleDragEnd: (event) => {
+      const { active, over } = event
+      if (!over) return
+
+      const activeId = active.id
+      const overId = over.id
+
+      const { taskColumns } = get()
+      const activeContainer = findContainer(taskColumns, activeId)
+      const overContainer = findContainer(taskColumns, overId)
+
+      if (!activeContainer || !overContainer) return
+
+      if (activeContainer === overContainer) {
         set((state) => {
-          let taskToMove = null
-          
-          // Find and remove task from source column
-          const updatedColumns = state.taskColumns.map(col => {
-            if (col.id === fromColumnId) {
-              const task = col.tasks.find(t => t.id === taskId)
-              if (task) {
-                taskToMove = { ...task, ...updateData }
-                return { ...col, tasks: col.tasks.filter(t => t.id !== taskId) }
+          const newColumns = state.taskColumns.map((col) => {
+            if (col.id === activeContainer) {
+              const activeIndex = col.tasks.findIndex((task) => task.id === activeId)
+              const overIndex = col.tasks.findIndex((task) => task.id === overId)
+
+              if (activeIndex !== overIndex) {
+                const reorderedTasks = arrayMove(col.tasks, activeIndex, overIndex)
+                const tasksWithOrder = reorderedTasks.map((task, idx) => {
+                  const updatedTask = { ...task, orderInColumn: idx }
+                  window.db.updateTask(task.id, { orderInColumn: idx }).catch((error) => {
+                    console.error('Failed to update task order:', error)
+                  })
+                  return updatedTask
+                })
+                return { ...col, tasks: tasksWithOrder }
               }
             }
             return col
           })
-          
-          // Add task to target column
-          if (taskToMove) {
-            const finalColumns = updatedColumns.map(col => {
-              if (col.id === toColumnId) {
-                return { ...col, tasks: [...col.tasks, taskToMove] }
+          return { taskColumns: newColumns }
+        })
+      }
+    },
+
+    // Subtask actions
+    addSubtask: async (taskId, subtaskTitle) => {
+      if (!subtaskTitle.trim()) return
+
+      const { taskColumns } = get()
+      const currentTask = taskColumns.flatMap((col) => col.tasks).find((t) => t.id === taskId)
+      const currentSubtaskCount = currentTask?.subtasks?.length || 0
+
+      const newSubtaskData = {
+        title: subtaskTitle,
+        completed: false,
+        order: currentSubtaskCount,
+        taskId: taskId
+      }
+
+      try {
+        const newSubtask = await window.db.createSubtask(newSubtaskData)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                const updatedSubtasks = [...(task.subtasks || []), newSubtask]
+                updatedSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+                return { ...task, subtasks: updatedSubtasks }
               }
-              return col
+              return task
             })
-            return { taskColumns: finalColumns }
-          }
-          
-          return { taskColumns: updatedColumns }
+          }))
+          return { taskColumns: newColumns }
         })
       } catch (error) {
-        console.error('Failed to move task:', error)
-        throw error
+        console.error('Failed to create subtask:', error)
       }
     },
-    
-    // Get today's tasks
-    getTodayTasks: () => {
-      const { taskColumns } = get()
-      const todayColumn = taskColumns.find(col => col.id === 'today')
-      return todayColumn?.tasks.filter(task => task.status !== 'done') || []
-    },
-    
-    // Get tasks by column
-    getTasksByColumn: (columnId) => {
-      const { taskColumns } = get()
-      const column = taskColumns.find(col => col.id === columnId)
-      return column?.tasks || []
-    },
-    
-    // Find task by ID
-    findTaskById: (taskId) => {
-      const { taskColumns } = get()
-      for (const column of taskColumns) {
-        const task = column.tasks.find(t => t.id === taskId)
-        if (task) return task
+
+    updateSubtask: async (taskId, subtaskId, updateData) => {
+      try {
+        await window.db.updateSubtask(subtaskId, updateData)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                const updatedSubtasks =
+                  task.subtasks?.map((subtask) =>
+                    subtask.id === subtaskId ? { ...subtask, ...updateData } : subtask
+                  ) || []
+                updatedSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+                return { ...task, subtasks: updatedSubtasks }
+              }
+              return task
+            })
+          }))
+          return { taskColumns: newColumns }
+        })
+        useAppStore.getState().triggerSubtaskUpdate()
+      } catch (error) {
+        console.error('Failed to update subtask:', error)
       }
-      return null
+    },
+
+    deleteSubtask: async (taskId, subtaskId) => {
+      try {
+        await window.db.deleteSubtask(subtaskId)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                const filteredSubtasks = task.subtasks?.filter((st) => st.id !== subtaskId) || []
+                filteredSubtasks.sort((a, b) => (a.order || 0) - (b.order || 0))
+                return { ...task, subtasks: filteredSubtasks }
+              }
+              return task
+            })
+          }))
+          return { taskColumns: newColumns }
+        })
+      } catch (error) {
+        console.error('Failed to delete subtask:', error)
+      }
+    },
+
+    // Attachment actions
+    addAttachment: async (taskId, attachmentData) => {
+      try {
+        const newAttachment = await window.db.createAttachment(attachmentData)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                return { ...task, attachments: [...(task.attachments || []), newAttachment] }
+              }
+              return task
+            })
+          }))
+          return { taskColumns: newColumns }
+        })
+      } catch (error) {
+        console.error('Failed to add attachment:', error)
+      }
+    },
+
+    deleteAttachment: async (taskId, attachmentId) => {
+      try {
+        await window.db.deleteAttachment(attachmentId)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                return {
+                  ...task,
+                  attachments: task.attachments.filter((att) => att.id !== attachmentId)
+                }
+              }
+              return task
+            })
+          }))
+          return { taskColumns: newColumns }
+        })
+      } catch (error) {
+        console.error('Failed to delete attachment:', error)
+      }
+    },
+
+    // Note actions
+    deleteNote: async (taskId, noteId) => {
+      try {
+        await window.db.deleteNote(noteId)
+        set((state) => {
+          const newColumns = state.taskColumns.map((col) => ({
+            ...col,
+            tasks: col.tasks.map((task) => {
+              if (task.id === taskId) {
+                return {
+                  ...task,
+                  notes: task.notes.filter((note) => note.id !== noteId)
+                }
+              }
+              return task
+            })
+          }))
+          return { taskColumns: newColumns }
+        })
+      } catch (error) {
+        console.error('Failed to delete note:', error)
+      }
+    },
+
+    detachNote: (taskId, noteId) => {
+      set((state) => {
+        const newColumns = state.taskColumns.map((col) => ({
+          ...col,
+          tasks: col.tasks.map((task) => {
+            if (task.id === taskId) {
+              return {
+                ...task,
+                notes: task.notes.filter((note) => note.id !== noteId)
+              }
+            }
+            return task
+          })
+        }))
+        return { taskColumns: newColumns }
+      })
+    },
+
+    detachAttachment: (taskId, attachmentId) => {
+      set((state) => {
+        const newColumns = state.taskColumns.map((col) => ({
+          ...col,
+          tasks: col.tasks.map((task) => {
+            if (task.id === taskId) {
+              return {
+                ...task,
+                attachments: task.attachments.filter((att) => att.id !== attachmentId)
+              }
+            }
+            return task
+          })
+        }))
+        return { taskColumns: newColumns }
+      })
+    },
+
+    moveTask: async (taskId, direction) => {
+      const { taskColumns } = get()
+      const columnOrder = ['backlog', 'thisweek', 'today', 'done']
+      let sourceColumnId = null
+      let taskToMove = null
+
+      taskColumns.forEach((col) => {
+        const task = col.tasks.find((t) => t.id === taskId)
+        if (task) {
+          taskToMove = task
+          sourceColumnId = col.id
+        }
+      })
+
+      if (!taskToMove) return
+
+      const sourceColumnOrderIndex = columnOrder.indexOf(sourceColumnId)
+      let targetColumnOrderIndex = sourceColumnOrderIndex
+
+      if (direction === 'left' && sourceColumnOrderIndex > 0) {
+        targetColumnOrderIndex = sourceColumnOrderIndex - 1
+      } else if (direction === 'right' && sourceColumnOrderIndex < columnOrder.length - 1) {
+        targetColumnOrderIndex = sourceColumnOrderIndex + 1
+      } else {
+        return
+      }
+
+      const targetColumnId = columnOrder[targetColumnOrderIndex]
+      const updatedTask = updateTaskForColumn({ ...taskToMove, orderInColumn: 0 }, targetColumnId)
+
+      set((state) => {
+        const newColumns = [...state.taskColumns]
+        const sourceColIndex = newColumns.findIndex((c) => c.id === sourceColumnId)
+        const targetColIndex = newColumns.findIndex((c) => c.id === targetColumnId)
+
+        if (sourceColIndex === -1 || targetColIndex === -1) return state
+
+        // Remove from source and reorder
+        const sourceTasks = newColumns[sourceColIndex].tasks.filter((t) => t.id !== taskId)
+        const reorderedSourceTasks = sourceTasks.map((task, idx) => ({ ...task, orderInColumn: idx }))
+        newColumns[sourceColIndex] = { ...newColumns[sourceColIndex], tasks: reorderedSourceTasks }
+        reorderedSourceTasks.forEach((task) => {
+          window.db.updateTask(task.id, { orderInColumn: task.orderInColumn })
+        })
+
+        // Add to target and reorder
+        const targetTasks = [updatedTask, ...newColumns[targetColIndex].tasks]
+        const reorderedTargetTasks = targetTasks.map((task, idx) => ({ ...task, orderInColumn: idx }))
+        newColumns[targetColIndex] = { ...newColumns[targetColIndex], tasks: reorderedTargetTasks }
+        reorderedTargetTasks.forEach((task) => {
+          if (task.id !== updatedTask.id) {
+            window.db.updateTask(task.id, { orderInColumn: task.orderInColumn })
+          }
+        })
+
+        return { taskColumns: newColumns }
+      })
     }
   }))
 )
 
-// Helper function (you might want to import this from your existing utils)
-const getCurrentWeek = () => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const startOfYear = new Date(year, 0, 1)
-  const days = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000))
-  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-  
-  return {
-    weekNumber,
-    year,
-    weekString: `${year}-W${weekNumber.toString().padStart(2, '0')}`
+useAppStore.subscribe(
+  (state) => state.selectedList,
+  (selectedList) => {
+    if (selectedList) {
+      useTaskStore.getState().loadTasks(selectedList.id)
+    } else {
+      useTaskStore.getState().setTaskColumns(getDefaultTaskColumns())
+    }
   }
+)
+
+const findContainer = (columns, id) => {
+  if (columns.some((col) => col.id === id)) {
+    return id
+  }
+  return columns.find((col) => col.tasks.some((task) => task.id === id))?.id
+}
+
+const updateTaskForColumn = (task, targetColumnId) => {
+  const now = new Date().toISOString()
+  const currentWeek = getCurrentWeek()
+
+  let updatedTask = { ...task }
+
+  if (targetColumnId === 'thisweek') {
+    updatedTask = updateTaskToCurrentWeek(updatedTask)
+    updatedTask = {
+      ...updatedTask,
+      status: 'inprogress',
+      scheduledForToday: false,
+      todayScheduledAt: null,
+      completedAt: null,
+      updatedAt: now
+    }
+  } else if (targetColumnId === 'today') {
+    updatedTask = {
+      ...updatedTask,
+      scheduledForToday: true,
+      todayScheduledAt: now,
+      status: 'inprogress',
+      completedAt: null,
+      updatedAt: now
+    }
+  } else if (targetColumnId === 'done') {
+    updatedTask = {
+      ...updatedTask,
+      status: 'done',
+      completedAt: now,
+      updatedAt: now
+    }
+  } else if (targetColumnId === 'backlog') {
+    updatedTask = {
+      ...updatedTask,
+      scheduledForToday: false,
+      todayScheduledAt: null,
+      status: 'backlog',
+      completedAt: null,
+      updatedAt: now
+    }
+  } else {
+    updatedTask = {
+      ...updatedTask,
+      status: 'inprogress',
+      completedAt: null,
+      updatedAt: now
+    }
+  }
+
+  const updateData = {
+    status: updatedTask.status,
+    scheduledForToday: updatedTask.scheduledForToday || false,
+    todayScheduledAt: updatedTask.todayScheduledAt,
+    completedAt: updatedTask.completedAt,
+    updatedAt: updatedTask.updatedAt,
+    weekNumber: updatedTask.weekNumber,
+    weekYear: updatedTask.weekYear,
+    assignedWeek: updatedTask.assignedWeek,
+    deadline: updatedTask.deadline,
+    orderInColumn: updatedTask.orderInColumn || 0
+  }
+
+  window.db.updateTask(task.id, updateData).catch((error) => {
+    console.error('Failed to update task in database:', error)
+  })
+
+  return updatedTask
 }
 
 export default useTaskStore

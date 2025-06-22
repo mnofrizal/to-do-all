@@ -1,9 +1,17 @@
 import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { PrismaClient } from '@prisma/client'
 import icon from '../../resources/icon.png?asset'
+import fs from 'fs'
+import path from 'path'
 
 const prisma = new PrismaClient()
+
+// Ensure attachments directory exists
+const attachmentsDir = path.join(app.getPath('userData'), 'attachments')
+if (!fs.existsSync(attachmentsDir)) {
+  fs.mkdirSync(attachmentsDir, { recursive: true })
+}
 
 // Simple development check
 const isDev = !app.isPackaged
@@ -72,9 +80,31 @@ ipcMain.handle('delete-list', async (_, id) => {
 })
 
 ipcMain.handle('get-tasks', async (_, listId) => {
-  return await prisma.task.findMany({ where: { listId }, include: { subtasks: true } })
+  return await prisma.task.findMany({ where: { listId }, include: { subtasks: true, attachments: true, notes: true } })
 })
 
+// Note handlers
+ipcMain.handle('create-note', async (_, data) => {
+  return await prisma.note.create({ data })
+})
+
+ipcMain.handle('get-notes', async (_, { taskId, listId }) => {
+  if (taskId) {
+    return await prisma.note.findMany({ where: { taskId } })
+  }
+  if (listId) {
+    return await prisma.note.findMany({ where: { listId } })
+  }
+  return []
+})
+
+ipcMain.handle('update-note', async (_, { id, data }) => {
+  return await prisma.note.update({ where: { id }, data })
+})
+
+ipcMain.handle('delete-note', async (_, id) => {
+  return await prisma.note.delete({ where: { id } })
+})
 ipcMain.handle('create-task', async (_, data) => {
   return await prisma.task.create({ data })
 })
@@ -99,66 +129,84 @@ ipcMain.handle('delete-subtask', async (_, id) => {
   return await prisma.subtask.delete({ where: { id } })
 })
 
-// TimelineNode handlers
-ipcMain.handle('get-timeline-nodes', async (_, listId) => {
-  return await prisma.timelineNode.findMany({ where: { listId } })
-})
+// Attachment handlers
+ipcMain.handle('create-attachment', async (_, attachmentData) => {
+  const { name, url, fileType, taskId, listId } = attachmentData
 
-ipcMain.handle('create-timeline-node', async (_, data) => {
-  return await prisma.timelineNode.create({ data })
-})
+  if (url) {
+    const uniqueFileName = `${Date.now()}-${name}`
+    const newFilePath = path.join(attachmentsDir, uniqueFileName)
 
-ipcMain.handle('update-timeline-node-position', async (_, { id, position }) => {
-  return await prisma.timelineNode.update({
-    where: { id },
-    data: { positionX: position.x, positionY: position.y }
-  })
-})
-
-ipcMain.handle('update-timeline-node-finished', async (_, { id, isFinished }) => {
-  return await prisma.timelineNode.update({
-    where: { id },
-    data: { isFinished }
-  })
-})
-
-ipcMain.handle('delete-timeline-node', async (_, id) => {
-  return await prisma.timelineNode.delete({ where: { id } })
-})
-
-// TimelineEdge handlers
-ipcMain.handle('get-timeline-edges', async (_, listId) => {
-  return await prisma.timelineEdge.findMany({ where: { listId } })
-})
-
-ipcMain.handle('create-timeline-edge', async (_, data) => {
-  return await prisma.timelineEdge.create({ data })
-})
-
-ipcMain.handle('delete-timeline-edge', async (_, params) => {
-  let sourceId, targetId;
-
-  // Handle the oddly nested parameter that seems to be coming from the renderer
-  if (params && params.sourceId && typeof params.sourceId === 'object') {
-    sourceId = params.sourceId.sourceId;
-    targetId = params.sourceId.targetId;
-  } else if (params) {
-    sourceId = params.sourceId;
-    targetId = params.targetId;
-  }
-
-  if (!sourceId || !targetId) {
-    console.error('Invalid arguments for delete-timeline-edge', params);
-    return;
-  }
-
-  return await prisma.timelineEdge.deleteMany({
-    where: {
-      sourceId: sourceId,
-      targetId: targetId
+    try {
+      fs.copyFileSync(url, newFilePath)
+      const newAttachment = await prisma.attachment.create({
+        data: {
+          name: name,
+          url: newFilePath, // Store the new path
+          fileType: fileType,
+          taskId: taskId,
+          listId: listId
+        }
+      })
+      return newAttachment
+    } catch (error) {
+      console.error('Failed to save attachment:', error)
+      throw error
     }
-  });
-});
+  } else {
+    // Create an empty attachment
+    return await prisma.attachment.create({
+      data: {
+        name: name,
+        url: null,
+        fileType: null,
+        taskId: taskId,
+        listId: listId
+      }
+    })
+  }
+})
+
+ipcMain.handle('get-attachments', async (_, { taskId, listId }) => {
+  if (taskId) {
+    return await prisma.attachment.findMany({ where: { taskId } })
+  }
+  if (listId) {
+    return await prisma.attachment.findMany({ where: { listId } })
+  }
+  return []
+})
+
+ipcMain.handle('delete-attachment', async (_, id) => {
+  try {
+    const attachment = await prisma.attachment.findUnique({ where: { id } })
+    if (attachment) {
+      if (fs.existsSync(attachment.url)) {
+        fs.unlinkSync(attachment.url)
+      }
+      return await prisma.attachment.delete({ where: { id } })
+    }
+  } catch (error) {
+    console.error('Failed to delete attachment:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('update-attachment', async (_, { id, data }) => {
+  if (data.url && !data.url.startsWith(app.getPath('userData'))) {
+    const uniqueFileName = `${Date.now()}-${data.name}`
+    const newFilePath = path.join(attachmentsDir, uniqueFileName)
+    try {
+      fs.copyFileSync(data.url, newFilePath)
+      data.url = newFilePath
+    } catch (error) {
+      console.error('Failed to save attachment:', error)
+      throw error
+    }
+  }
+  return await prisma.attachment.update({ where: { id }, data })
+})
+
 
 // Simplified Timer handlers (no TimeSession creation)
 ipcMain.handle('get-task-total-time', async (_, taskId) => {
@@ -198,7 +246,7 @@ ipcMain.handle('get-task', async (_, taskId) => {
   try {
     return await prisma.task.findUnique({
       where: { id: taskId },
-      include: { subtasks: true }
+      include: { subtasks: true, attachments: true, notes: true }
     })
   } catch (error) {
     console.error('Error getting task:', error)
@@ -299,8 +347,7 @@ ipcMain.handle('global-search', async (_, query) => {
     const tasks = await prisma.task.findMany({
       where: {
         OR: [
-          { title: { contains: query } },
-          { notes: { contains: query } }
+          { title: { contains: query } }
         ]
       },
       select: {
@@ -308,7 +355,6 @@ ipcMain.handle('global-search', async (_, query) => {
         title: true,
         status: true,
         priority: true,
-        notes: true,
         estimatedTime: true,
         listId: true,
         list: {
@@ -751,6 +797,10 @@ ipcMain.on('start-position-tracking', () => {
 
 ipcMain.on('stop-position-tracking', () => {
   stopPositionTracking()
+})
+
+ipcMain.on('open-file', (event, filePath) => {
+  shell.openPath(filePath)
 })
 
 // This method will be called when Electron has finished

@@ -27,6 +27,9 @@ const useAppStore = create(
     timer: { hours: 0, minutes: 0, seconds: 0 },
     isTimerRunning: false,
     
+    attachmentTrigger: 0,
+    noteTrigger: 0,
+    
     // Actions for authentication
     setCurrentUser: (user) => set({ currentUser: user }),
     setIsAuthChecking: (checking) => set({ isAuthChecking: checking }),
@@ -148,6 +151,11 @@ const useAppStore = create(
       currentView: 'home',
       selectedList: null
     }),
+
+    navigateToTimeline: () => set({
+      currentView: 'timeline',
+      activeTaskView: 'timeline'
+    }),
     
     enterFloatingMode: () => {
       set({
@@ -245,7 +253,10 @@ const useAppStore = create(
         console.error('Failed to fetch workspace lists:', error)
         set({ workspaceLists: [] })
       }
-    }
+    },
+    triggerAttachmentUpdate: () => set((state) => ({ attachmentTrigger: state.attachmentTrigger + 1 })),
+    triggerNoteUpdate: () => set((state) => ({ noteTrigger: state.noteTrigger + 1 })),
+    triggerSubtaskUpdate: () => set((state) => ({ subtaskTrigger: state.subtaskTrigger + 1 })),
   }))
 )
 

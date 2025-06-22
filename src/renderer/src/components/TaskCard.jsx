@@ -1,6 +1,6 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Menu, FileText, ChevronLeft, ChevronRight, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, ArrowUp, ArrowDown, Trash2, Save } from 'lucide-react'
+import { Plus, Menu, FileText, ChevronLeft, ChevronRight, MoreVertical, CheckCircle2, ChevronDown, ChevronUp, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, ArrowUp, ArrowDown, Trash2, Save, Paperclip } from 'lucide-react'
 import {
   useSortable,
 } from '@dnd-kit/sortable'
@@ -10,6 +10,9 @@ import {
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import FileIcon from './FileIcon'
+import useTaskStore from '../stores/useTaskStore'
+
 
 const TaskCard = ({
   task,
@@ -23,15 +26,12 @@ const TaskCard = ({
   handleToggleSubtasks,
   handleShowSubtaskInput,
   handleToggleNotes,
+  handleToggleAttachments,
   handleMoveTask,
   handleDuplicateTask,
   handleChangePriority,
   handleDeleteTask,
   getPriorityColor,
-  taskNotes,
-  handleNotesChange,
-  handleSaveNotes,
-  handleDeleteNotes,
   expandedNotes,
   setExpandedNotes,
   expandedSubtasks,
@@ -57,7 +57,10 @@ const TaskCard = ({
   setEditingTaskValue,
   handleEditTask,
   handleSaveTaskEdit,
-  handleCancelTaskEdit
+  handleCancelTaskEdit,
+  addAttachment,
+  deleteAttachment,
+  expandedAttachments
 }) => {
   const {
     attributes,
@@ -240,6 +243,17 @@ const TaskCard = ({
                   whileTap={{ scale: 0.95 }}
                 >
                   <FileText size={16} />
+                </motion.button>
+                <motion.button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleToggleAttachments(task.id)
+                  }}
+                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Paperclip size={16} />
                 </motion.button>
                 <motion.button
                   onClick={(e) => {
@@ -608,108 +622,50 @@ const TaskCard = ({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{
-              duration: 0.4,
-              ease: [0.25, 0.1, 0.25, 1],
-              opacity: { duration: 0.2, ease: "easeOut" },
-              height: {
-                duration: 0.4,
-                ease: [0.25, 0.1, 0.25, 1],
-                delay: expandedNotes[task.id] ? 0 : 0.15
-              }
-            }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
             className="mt-3 border-t border-border pt-3"
-            style={{ overflow: 'hidden' }}
           >
-          {/* Formatting Toolbar */}
-          <div className='flex w-full items-center justify-between'>
-          <div className="mb-3 flex items-center justify-between gap-1 rounded-lg border border-border bg-muted/50 p-2">
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <Bold size={14} />
-            </button>
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <Italic size={14} />
-            </button>
-            <div className="mx-1 h-4 w-px bg-border"></div>
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <List size={14} />
-            </button>
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <ListOrdered size={14} />
-            </button>
-            <div className="mx-1 h-4 w-px bg-border"></div>
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <Undo size={14} />
-            </button>
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-              <Redo size={14} />
-            </button>
+            {/* Notes List */}
+            <div className="space-y-2">
+              {task.notes?.map((note) => (
+                <div key={note.id} className="flex items-center justify-between rounded-md bg-muted/50 p-2">
+                  <p className="text-sm">{note.content}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      await window.db.deleteNote(note.id)
+                      useTaskStore.getState().loadTasks(task.listId)
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
             </div>
-            <div className="mb-3 flex items-center justify-between gap-1 rounded-lg border border-border bg-muted/50 p-2">
-            <button className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground">
-            <Save size={14} strokeWidth={2} />
-            </button>
-            <button className="rounded p-1 text-red-500 hover:bg-background hover:text-foreground">
-            <Trash2 size={14} strokeWidth={2} />
-            </button>
+            {/* Add Note Input */}
+            <div className="mt-2">
+              <Input
+                placeholder="Add a note..."
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && e.target.value.trim()) {
+                    window.db.createNote({
+                      content: e.target.value,
+                      taskId: task.id
+                    })
+                    e.target.value = ''
+                    // Reload tasks to reflect the new note
+                    useTaskStore.getState().loadTasks(task.listId)
+                  }
+                }}
+              />
             </div>
-          </div>
-   
-
-          {/* Notes Textarea */}
-          <div className="relative">
-            <textarea
-              placeholder="Enter your notes here..."
-              value={taskNotes[task.id] || ''}
-              onChange={(e) => handleNotesChange(task.id, e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              onFocus={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="min-h-[120px] w-full resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              autoFocus
-            />
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setExpandedNotes(prev => ({ ...prev, [task.id]: false }))
-              }}
-              className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Save and Delete Buttons  DONT DELETE USED LATER*/}
-          {/* <div className="mt-3 flex justify-between">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDeleteNotes(task.id)
-              }}
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 size={14} />
-            </Button>
-            <Button
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleSaveNotes(task.id)
-              }}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <Save size={14} />
-            </Button>
-          </div> */}
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Notes Indicator */}
-      {task.notes && !expandedNotes[task.id] && (
+      {task.notes && task.notes.length > 0 && !expandedNotes[task.id] && (
         <div className="mt-3 border-t border-border pt-3">
           <div
             className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -719,7 +675,81 @@ const TaskCard = ({
             }}
           >
             <FileText size={14} />
-            <span>{task.notes}</span>
+            <span>{task.notes.length} {task.notes.length === 1 ? 'note' : 'notes'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Attachments Section */}
+      <AnimatePresence>
+        {expandedAttachments && expandedAttachments[task.id] && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="mt-3 border-t border-border pt-3"
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Attachments</h4>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.onchange = async (e) => {
+                    const file = e.target.files[0]
+                    if (file) {
+                      const newAttachment = {
+                        name: file.name,
+                        url: file.path,
+                        fileType: file.type,
+                        taskId: task.id
+                      }
+                      addAttachment(task.id, newAttachment)
+                    }
+                  }
+                  input.click()
+                }}
+              >
+                <Plus size={16} className="mr-2" />
+                Add
+              </Button>
+            </div>
+            <div className="mt-2 space-y-2">
+              {task.attachments?.map((attachment) => (
+                <div key={attachment.id} className="flex items-center justify-between rounded-md bg-muted/50 p-2">
+                  <button onClick={() => window.api.openFile(attachment.url)} className="flex items-center gap-2 text-sm text-foreground hover:underline">
+                    <FileIcon fileName={attachment.name} />
+                    {attachment.name}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteAttachment(task.id, attachment.id)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Attachments Indicator */}
+      {task.attachments && task.attachments.length > 0 && !expandedAttachments[task.id] && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div
+            className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleToggleAttachments(task.id)
+            }}
+          >
+            <Paperclip size={14} />
+            <span>{task.attachments.length} {task.attachments.length === 1 ? 'attachment' : 'attachments'}</span>
           </div>
         </div>
       )}
