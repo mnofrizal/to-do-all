@@ -546,8 +546,8 @@ const App = () => {
           <motion.div
             className="absolute inset-0 flex flex-col overflow-hidden"
             animate={{
-              left: (currentView === 'taskProgress' || windowMode === 'floating' || windowMode === 'focus') ? '0px' : '288px',
-              width: (currentView === 'taskProgress' || windowMode === 'floating' || windowMode === 'focus') ? '100%' : 'calc(100% - 288px)'
+              left: (currentView === 'taskProgress' || windowMode === 'floating' || windowMode === 'focus') ? '0px' : '320px',
+              width: (currentView === 'taskProgress' || windowMode === 'floating' || windowMode === 'focus') ? '100%' : 'calc(100% - 320px)'
             }}
             transition={{
               type: "spring",
@@ -572,11 +572,20 @@ const App = () => {
               />
             )}
             
-            <main className={`flex-1 overflow-y-auto ${(windowMode === 'floating' || windowMode === 'focus') ? 'h-full' : ''}`}>
+            <main className={`show-scrollbar flex-1 overflow-y-auto ${(windowMode === 'floating' || windowMode === 'focus') ? 'h-full' : ''}`}>
               <AnimatePresence>
                 {renderContent()}
               </AnimatePresence>
             </main>
+
+            {windowMode !== 'floating' && windowMode !== 'focus' && currentView !== 'taskProgress' && (
+              <footer className="border-t border-border bg-background/95 px-10 py-1 backdrop-blur-sm">
+                <div className="flex items-center justify-between text-[10px] leading-none text-muted-foreground">
+                  <span>TaskLeap</span>
+                  <span>Stay organized.</span>
+                </div>
+              </footer>
+            )}
           </motion.div>
         </div>
       </div>

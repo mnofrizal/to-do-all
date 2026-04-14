@@ -70,7 +70,9 @@ if (process.contextIsolated) {
       getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
       getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId),
       // Global search
-      globalSearch: (query) => ipcRenderer.invoke('global-search', query)
+      globalSearch: (query) => ipcRenderer.invoke('global-search', query),
+      exportData: (userId, format) => ipcRenderer.invoke('export-data', { userId, format }),
+      importData: (userId) => ipcRenderer.invoke('import-data', { userId })
     })
   } catch (error) {
     console.error(error)
@@ -115,6 +117,8 @@ if (process.contextIsolated) {
     getTaskTimeSessions: (taskId) => ipcRenderer.invoke('get-task-time-sessions', taskId),
     getAllTaskSessions: (taskId) => ipcRenderer.invoke('get-all-task-sessions', taskId),
     // Global search
-    globalSearch: (query) => ipcRenderer.invoke('global-search', query)
+    globalSearch: (query) => ipcRenderer.invoke('global-search', query),
+    exportData: (userId, format) => ipcRenderer.invoke('export-data', { userId, format }),
+    importData: (userId) => ipcRenderer.invoke('import-data', { userId })
   }
 }

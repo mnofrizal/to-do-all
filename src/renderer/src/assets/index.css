@@ -201,6 +201,27 @@ html, body, :root {
   background: #94a3b8;
 }
 
+/* Show vertical scrollbar when needed */
+.show-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+.show-scrollbar::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+.show-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.show-scrollbar::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 9999px;
+}
+.show-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
 /* Dialog backdrop styling */
 [data-radix-dialog-overlay],
 [data-state="open"][data-radix-dialog-overlay],

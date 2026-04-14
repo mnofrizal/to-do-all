@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List, User, LogOut } from 'lucide-react'
+import { Search, Grid3X3, Settings, ChevronDown, Zap, ArrowLeft, Monitor, Sun, Moon, Kanban, FileText, GitBranch, List, User, LogOut, Download, Upload } from 'lucide-react'
 import { Button } from './ui/button'
 import { Switch } from './ui/switch.jsx'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogOverlay } from './ui/dialog'
@@ -16,6 +16,11 @@ const TopNavbar = ({ onBack, onListChange }) => {
   const [currentTheme, setCurrentTheme] = useState('light')
   const [language, setLanguage] = useState('english')
   const [hideEstDoneTimes, setHideEstDoneTimes] = useState(true)
+  const [activeSettingsTab, setActiveSettingsTab] = useState('general')
+  const [dataTransferMessage, setDataTransferMessage] = useState('')
+  const [isExportingJson, setIsExportingJson] = useState(false)
+  const [isExportingCsv, setIsExportingCsv] = useState(false)
+  const [isImportingData, setIsImportingData] = useState(false)
 
   // Get state from Zustand stores
   const {
@@ -28,7 +33,10 @@ const TopNavbar = ({ onBack, onListChange }) => {
     activeWorkspace,
     workspaceLists,
     fetchWorkspaceLists,
-    logout
+    logout,
+    setWorkspaces,
+    setArchivedLists,
+    setActiveWorkspace
   } = useAppStore()
 
   // Create onLogout handler
@@ -73,6 +81,102 @@ const TopNavbar = ({ onBack, onListChange }) => {
   const handleToggleEstDoneTimes = () => {
     setHideEstDoneTimes(!hideEstDoneTimes)
     console.log('Hide est/done times:', !hideEstDoneTimes)
+  }
+
+  const handleExportData = async (format) => {
+    if (!currentUser?.id) return
+
+    setDataTransferMessage('')
+    if (format === 'json') {
+      setIsExportingJson(true)
+    } else {
+      setIsExportingCsv(true)
+    }
+
+    try {
+      const result = await window.db.exportData(currentUser.id, format)
+      if (result?.canceled) return
+      if (result?.error) {
+        setDataTransferMessage(`Export failed: ${result.error}`)
+        return
+      }
+      setDataTransferMessage(`Data exported to ${result.filePath}`)
+    } catch (error) {
+      setDataTransferMessage(`Export failed: ${error.message}`)
+    } finally {
+      setIsExportingJson(false)
+      setIsExportingCsv(false)
+    }
+  }
+
+  const refreshWorkspaceData = async () => {
+    if (!currentUser?.id) return
+
+    const fetchedWorkspaces = await window.db.getWorkspaces(currentUser.id)
+    const workspacesWithCounts = await Promise.all(
+      fetchedWorkspaces.map(async (workspace) => {
+        try {
+          const lists = await window.db.getLists(workspace.id)
+          const activeLists = lists.filter(list => !list.isArchived)
+
+          return {
+            ...workspace,
+            icon: workspace.name.charAt(0).toUpperCase(),
+            color: ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-red-500', 'bg-yellow-500'][workspace.id % 8],
+            totalCount: activeLists.length
+          }
+        } catch (error) {
+          return {
+            ...workspace,
+            icon: workspace.name.charAt(0).toUpperCase(),
+            color: ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-red-500', 'bg-yellow-500'][workspace.id % 8],
+            totalCount: 0
+          }
+        }
+      })
+    )
+
+    const archivedLists = []
+    for (const workspace of fetchedWorkspaces) {
+      const lists = await window.db.getLists(workspace.id)
+      archivedLists.push(...lists.filter(list => list.isArchived))
+    }
+
+    setWorkspaces(workspacesWithCounts)
+    setArchivedLists(archivedLists)
+
+    const nextWorkspaceId = activeWorkspace && fetchedWorkspaces.some(workspace => workspace.id === activeWorkspace)
+      ? activeWorkspace
+      : fetchedWorkspaces[0]?.id ?? null
+
+    setActiveWorkspace(nextWorkspaceId)
+
+    if (nextWorkspaceId) {
+      await fetchWorkspaceLists(nextWorkspaceId)
+    }
+  }
+
+  const handleImportData = async () => {
+    if (!currentUser?.id) return
+
+    setDataTransferMessage('')
+    setIsImportingData(true)
+
+    try {
+      const result = await window.db.importData(currentUser.id)
+      if (result?.canceled) return
+      if (result?.error) {
+        setDataTransferMessage(`Import failed: ${result.error}`)
+        return
+      }
+
+      await refreshWorkspaceData()
+      setDataTransferMessage(`Imported ${result.summary.workspaces} workspace(s), ${result.summary.lists} list(s), ${result.summary.tasks} task(s), and ${result.summary.subtasks} subtask(s).`)
+    } catch (error) {
+      setDataTransferMessage(`Import failed: ${error.message}`)
+    } finally {
+      setIsImportingData(false)
+    }
   }
 
   // Handle keyboard shortcuts
@@ -284,8 +388,10 @@ const TopNavbar = ({ onBack, onListChange }) => {
     return null
   }
 
+  const navbarPaddingClass = currentView === 'taskProgress' ? 'px-6' : 'px-10'
+
   return (
-    <div className="flex h-16 items-center justify-between bg-background px-6">
+    <div className={`flex h-16 items-center justify-between bg-background ${navbarPaddingClass}`}>
       {/* Left side - Dynamic content */}
       {renderLeftContent()}
 
@@ -365,7 +471,7 @@ const TopNavbar = ({ onBack, onListChange }) => {
       {/* Settings Dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
 
-        <DialogContent className="border-border bg-card sm:max-w-[700px]">
+        <DialogContent className="border-border bg-card sm:max-w-[760px]">
           <DialogHeader className="border-b border-border pb-4">
             <DialogTitle className="text-xl text-card-foreground">Settings</DialogTitle>
             <DialogDescription className="text-base text-muted-foreground">
@@ -373,79 +479,149 @@ const TopNavbar = ({ onBack, onListChange }) => {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-6 py-4">
-            {/* General Settings */}
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-card-foreground">General</h3>
-              
-              {/* Hide est/done times toggle */}
-              {/* <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Hide est/done times on tasks</span>
-                <Switch
-                  checked={hideEstDoneTimes}
-                  onCheckedChange={setHideEstDoneTimes}
-                />
-              </div> */}
-
-              {/* Theme Settings */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Appearance</span>
-                <div className="flex space-x-2">
-                  {themeOptions.map((option) => (
-                    <Button
-                      key={option.id}
-                      variant={currentTheme === option.id ? "default" : "secondary"}
-                      size="sm"
-                      onClick={() => handleThemeChange(option.id)}
-                      className="h-8 w-20 text-sm font-medium"
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Color Theme Settings */}
-              <div className="space-y-3">
-                <span className="text-base text-muted-foreground">Color Theme</span>
-                <div className="grid grid-cols-2 gap-3">
-                  {availableColorThemes.map((colorThemeOption) => (
-                    <Button
-                      key={colorThemeOption.id}
-                      variant={colorTheme === colorThemeOption.id ? "default" : "outline"}
-                      onClick={() => handleColorThemeChange(colorThemeOption.id)}
-                      className="h-auto justify-start p-4 text-left"
-                    >
-                      <div className="flex w-full items-center justify-between">
-                        <div>
-                          <div className="font-medium">{colorThemeOption.name}</div>
-                          <div className="text-xs opacity-70">{colorThemeOption.description}</div>
-                        </div>
-                        {colorTheme === colorThemeOption.id && (
-                          <div className="h-2 w-2 rounded-full bg-current"></div>
-                        )}
-                      </div>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Language Settings */}
-              <div className="flex items-center justify-between">
-                <span className="text-base text-muted-foreground">Language</span>
-                <select
-                  value={language}
-                  onChange={(e) => handleLanguageChange(e.target.value)}
-                  className="min-w-[200px] rounded-lg border border-input bg-background px-3 py-2 text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {languageOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="py-4">
+            <div className="mb-6 flex gap-2 rounded-xl border border-border bg-muted/30 p-1">
+              <button
+                type="button"
+                onClick={() => setActiveSettingsTab('general')}
+                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  activeSettingsTab === 'general'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                General
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSettingsTab('data')}
+                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  activeSettingsTab === 'data'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Export Data
+              </button>
             </div>
+
+            {activeSettingsTab === 'general' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-card-foreground">General</h3>
+
+                {/* Hide est/done times toggle */}
+                {/* <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Hide est/done times on tasks</span>
+                  <Switch
+                    checked={hideEstDoneTimes}
+                    onCheckedChange={setHideEstDoneTimes}
+                  />
+                </div> */}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Appearance</span>
+                  <div className="flex space-x-2">
+                    {themeOptions.map((option) => (
+                      <Button
+                        key={option.id}
+                        variant={currentTheme === option.id ? "default" : "secondary"}
+                        size="sm"
+                        onClick={() => handleThemeChange(option.id)}
+                        className="h-8 w-20 text-sm font-medium"
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <span className="text-base text-muted-foreground">Color Theme</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    {availableColorThemes.map((colorThemeOption) => (
+                      <Button
+                        key={colorThemeOption.id}
+                        variant={colorTheme === colorThemeOption.id ? "default" : "outline"}
+                        onClick={() => handleColorThemeChange(colorThemeOption.id)}
+                        className="h-auto justify-start p-4 text-left"
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <div>
+                            <div className="font-medium">{colorThemeOption.name}</div>
+                            <div className="text-xs opacity-70">{colorThemeOption.description}</div>
+                          </div>
+                          {colorTheme === colorThemeOption.id && (
+                            <div className="h-2 w-2 rounded-full bg-current"></div>
+                          )}
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-base text-muted-foreground">Language</span>
+                  <select
+                    value={language}
+                    onChange={(e) => handleLanguageChange(e.target.value)}
+                    className="min-w-[200px] rounded-lg border border-input bg-background px-3 py-2 text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {languageOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === 'data' && (
+              <div className="space-y-4 rounded-xl border border-border p-4">
+                <div>
+                  <h4 className="text-base font-semibold text-card-foreground">Export Data</h4>
+                  <p className="text-sm text-muted-foreground">Export your workspaces, lists, tasks, and subtasks to JSON or CSV, and import them back later.</p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleExportData('json')}
+                    disabled={isExportingJson || isExportingCsv || isImportingData}
+                    className="min-w-[170px]"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {isExportingJson ? 'Exporting JSON...' : 'Export JSON'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleExportData('csv')}
+                    disabled={isExportingJson || isExportingCsv || isImportingData}
+                    className="min-w-[170px]"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {isExportingCsv ? 'Exporting CSV...' : 'Export CSV'}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleImportData}
+                    disabled={isExportingJson || isExportingCsv || isImportingData}
+                    className="min-w-[170px]"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {isImportingData ? 'Importing...' : 'Import JSON / CSV'}
+                  </Button>
+                </div>
+
+                {dataTransferMessage && (
+                  <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {dataTransferMessage}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

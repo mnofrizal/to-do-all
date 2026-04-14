@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical, X } from 'lucide-react'
+import { Plus, Clock, ExpandIcon, Edit, Copy, Archive, MoreVertical, X, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
@@ -237,8 +237,8 @@ const HomePage = ({ onCardClick }) => {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[1700px] bg-background p-6 px-10">
-      <div className="flex-col">
+    <div className="mx-auto flex min-h-full w-full max-w-[1700px] bg-background p-6 px-10">
+      <div className="flex w-full flex-col">
         {/* Header */}
         <div className="mb-8 mt-2 flex items-center justify-between">
           <h1 className="text-xl font-bold text-foreground">Your Lists</h1>
@@ -275,7 +275,10 @@ const HomePage = ({ onCardClick }) => {
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 3xl:grid-cols-5 4xl:grid-cols-5">
             {/* Existing Lists */}
-            {lists.map((list, index) => (
+            {lists.map((list, index) => {
+              const pendingTasks = list.tasks ? list.tasks.filter(task => task.status !== 'done') : []
+
+              return (
           <motion.div
             key={list.id}
             variants={cardVariants}
@@ -285,7 +288,7 @@ const HomePage = ({ onCardClick }) => {
             }}
           >
             <Card
-              className="group relative flex h-80 cursor-pointer flex-col rounded-xl border bg-[#FCFBFB] transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-primary hover:ring-opacity-50 dark:border-zinc-700 dark:bg-[#171717]"
+              className="group relative flex h-80 cursor-pointer flex-col rounded-2xl border bg-[#FCFBFB] transition-all duration-200 hover:shadow-xl hover:ring-2 hover:ring-primary hover:ring-opacity-50 dark:border-zinc-700 dark:bg-[#171717]"
               onClick={() => onCardClick && onCardClick(list)}
             >
          <div className='px-6 pt-3'>
@@ -358,41 +361,50 @@ const HomePage = ({ onCardClick }) => {
               {/* Tasks List with Gradient Fade */}
               <div className="relative flex-1 overflow-hidden">
                 <div className="p-6 pb-0 pt-4">
-                  <div className="space-y-3">
-                    {Array.from({ length: 4 }, (_, index) => {
-                      const task = list.tasks ? list.tasks[index] : undefined;
-                      return (
-                        <div key={index} className={`flex items-center justify-between p-3 rounded-lg h-10 ${
-                          task ? (task.isActive ? 'bg-primary/10 border border-primary/20' : 'dark:bg-[#222222] bg-white border border-border') : 'bg-transparent'
-                        }`}>
-                          {task ? (
-                            <>
-                              <div className="flex items-center space-x-3">
-                                <span className="text-sm text-muted-foreground">{index + 1}</span>
-                                <span className="max-w-[150px] flex-1 truncate text-sm text-muted-foreground" title={task.title}>{task.title}</span>
-                              </div>
-                              <div className="flex items-center">
-                                <span className="text-xs text-muted-foreground">       {task.timeSpent ?
-                        `${Math.floor(task.timeSpent / 60).toString().padStart(2, '0')}:${(task.timeSpent % 60).toString().padStart(2, '0')}`
-                        : '-'
-                      }</span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="h-full w-full"></div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {pendingTasks.length > 0 ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 4 }, (_, index) => {
+                        const task = pendingTasks[index];
+                        return (
+                          <div key={index} className={`flex items-center justify-between p-3 rounded-lg h-10 ${
+                            task ? (task.isActive ? 'bg-primary/10 border border-primary/20' : 'dark:bg-[#222222] bg-white border border-border') : 'bg-transparent'
+                          }`}>
+                            {task ? (
+                              <>
+                                <div className="flex items-center space-x-3">
+                                  <span className="text-sm text-muted-foreground">{index + 1}</span>
+                                  <span className="max-w-[150px] flex-1 truncate text-sm text-muted-foreground" title={task.title}>{task.title}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="text-xs text-muted-foreground">       {task.timeSpent ?
+                          `${Math.floor(task.timeSpent / 60).toString().padStart(2, '0')}:${(task.timeSpent % 60).toString().padStart(2, '0')}`
+                          : '-'
+                        }</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="h-full w-full"></div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400">
+                        <Check className="h-5 w-5" />
+                      </div>
+                      <span className="text-sm font-medium text-muted-foreground">All clear</span>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Gradient Fade Effect */}
-                {list.tasks && list.tasks.length > 4 && (
+                {pendingTasks.length > 4 && (
                   <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent"></div>
                 )}
                 {/* Hover Open Button Overlay */}
-                {list.tasks && list.tasks.some(task => task.isActive) && (
+                {pendingTasks.some(task => task.isActive) && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <Button
                       className="rounded-full bg-primary px-6 text-primary-foreground shadow-xl hover:bg-primary/90"
@@ -412,7 +424,7 @@ const HomePage = ({ onCardClick }) => {
               <div className="p-6 pt-3">
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400">
-                    {list.tasks ? list.tasks.filter(t => t.status !== 'done').length : 0} pending tasks
+                    {pendingTasks.length} pending tasks
                   </span>
                   
                 </div>
@@ -420,11 +432,12 @@ const HomePage = ({ onCardClick }) => {
             </CardContent>
             </Card>
           </motion.div>
-        ))}
+            )
+          })}
 
             {/* Create New List Card */}
             <Card
-              className="h-80 w-full cursor-pointer rounded-xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]"
+              className="h-80 w-full cursor-pointer rounded-2xl border-2 border-dashed border-border transition-colors hover:border-primary dark:bg-[#171717]"
               onClick={() => setIsDialogOpen(true)}
             >
               <CardContent className="flex h-full flex-col items-center justify-center text-center">

@@ -319,7 +319,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, activeWorkspace, setActiveWorkspac
 
   return (
     <motion.div
-      className="bg-sidebar flex h-full w-72 flex-col overflow-hidden"
+      className="bg-sidebar flex h-full w-80 flex-col overflow-hidden"
       variants={sidebarVariants}
       initial="initial"
       animate="animate"

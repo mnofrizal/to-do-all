@@ -86,7 +86,7 @@ const KanbanColumn = ({
 
   return (
     <div key={column.id} className="flex h-[calc(100vh-150px)] w-full min-w-[350px] max-w-[370px] flex-col">
-      <Card className={`flex h-full flex-col border ${column.color} bg-card`}>
+      <Card className={`flex h-full flex-col rounded-2xl border ${column.color} bg-card`}>
         {/* Column Header */}
         <div className="flex items-center justify-between p-4 pb-3">
           <div className="flex items-center gap-2">
